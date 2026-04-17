@@ -4,6 +4,9 @@
   padding: 0;
 }
 
+/* Ensure the [hidden] attribute always wins even if display is set elsewhere */
+[hidden] { display: none !important; }
+
 body {
   background: #0f1117;
   color: #e2e8f0;
@@ -11,6 +14,177 @@ body {
   font-size: 14px;
   min-height: 100vh;
   padding: 24px;
+}
+
+/* ── Shortcuts section ──────────────────────────────────── */
+
+#shortcuts-section {
+  margin-bottom: 32px;
+}
+
+#shortcuts {
+  display: grid;
+  grid-template-columns: repeat(6, 80px);
+  gap: 4px;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 640px) {
+  #shortcuts { grid-template-columns: repeat(4, 80px); }
+}
+
+@media (max-width: 420px) {
+  #shortcuts { grid-template-columns: repeat(3, 80px); }
+}
+
+/* Outer wrapper — resets button chrome, holds circle + label vertically */
+.shortcut-slot {
+  appearance: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  width: 100%;
+}
+
+/* The circle itself */
+.shortcut-circle {
+  align-items: center;
+  background: #3c3c3c;
+  border-radius: 50%;
+  display: flex;
+  flex-shrink: 0;
+  height: 56px;
+  justify-content: center;
+  transition: background 0.15s;
+  width: 56px;
+}
+
+.shortcut-slot:hover .shortcut-circle {
+  background: #4e4e4e;
+}
+
+/* Empty slot circle — faint + icon */
+.shortcut-empty .shortcut-circle {
+  background: rgba(255, 255, 255, 0.07);
+  color: #9aa0a6;
+  font-size: 24px;
+  font-weight: 300;
+}
+
+.shortcut-empty:hover .shortcut-circle {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+
+/* Editing state circle */
+.shortcut-editing .shortcut-circle {
+  background: #1e2a4a;
+  border: 2px solid #5b6cf8;
+  color: #5b6cf8;
+  font-size: 18px;
+}
+
+.shortcut-favicon {
+  border-radius: 2px;
+  height: 26px;
+  width: 26px;
+}
+
+.shortcut-label {
+  color: #bdc1c6;
+  font-size: 12px;
+  max-width: calc(100% - 8px);
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Inline edit form ───────────────────────────────────── */
+
+#shortcut-form-panel {
+  align-items: center;
+  background: #161b27;
+  border: 1px solid #2a2f4a;
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+#shortcut-form-panel input {
+  background: #0f1117;
+  border: 1px solid #2a2f4a;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 13px;
+  outline: none;
+  padding: 6px 10px;
+  transition: border-color 0.15s;
+}
+
+#shortcut-form-panel input:focus {
+  border-color: #5b6cf8;
+}
+
+#sf-name { width: 150px; }
+#sf-url  { width: 240px; }
+
+.sf-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.sf-buttons button {
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 14px;
+  transition: background 0.1s;
+}
+
+#sf-save   { background: #5b6cf8; color: #fff; }
+#sf-save:hover  { background: #4a5be0; }
+
+#sf-cancel { background: #1e2336; color: #8892b0; }
+#sf-cancel:hover { background: #252b42; }
+
+/* ── Context menu ───────────────────────────────────────── */
+
+#ctx-menu {
+  background: #1e2336;
+  border: 1px solid #2d3148;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  min-width: 110px;
+  overflow: hidden;
+  position: fixed;
+  z-index: 9999;
+}
+
+#ctx-menu button {
+  background: none;
+  border: none;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 8px 16px;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+#ctx-menu button:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* ── Top bar ────────────────────────────────────────────── */
@@ -47,85 +221,121 @@ body {
   font-size: 13px;
 }
 
-/* ── Window grid ────────────────────────────────────────── */
+/* ── Tab dashboard — window rows ────────────────────────── */
 
 #grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* ── Window column ──────────────────────────────────────── */
-
-.window-col {
+.window-row {
   background: #161b27;
   border: 1px solid #222840;
   border-radius: 10px;
+  display: flex;
+  align-items: stretch;
   overflow: hidden;
 }
 
-.window-header {
+.window-row-label {
+  align-items: center;
   background: #1e2336;
   color: #8892b0;
-  font-size: 12px;
+  display: flex;
+  font-size: 11px;
   font-weight: 600;
+  justify-content: center;
   letter-spacing: 0.04em;
-  padding: 8px 12px;
+  min-width: 76px;
+  padding: 10px 8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.window-row-content {
+  align-items: flex-start;
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 10px;
+}
+
+/* ── Category groups ────────────────────────────────────── */
+
+.tab-group {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.group-label {
+  color: #3e4460;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 0 2px;
   text-transform: uppercase;
 }
 
-/* ── Tab rows ───────────────────────────────────────────── */
+.group-divider {
+  background: #222840;
+  height: 22px;
+  margin: 0 4px;
+  width: 1px;
+}
 
-.tab-row {
+/* ── Tab chips ──────────────────────────────────────────── */
+
+.tab-chip {
   align-items: center;
+  background: #1e2336;
+  border-radius: 16px;
   cursor: pointer;
   display: flex;
-  gap: 8px;
-  padding: 6px 10px;
-  position: relative;
+  gap: 5px;
+  max-width: 180px;
+  padding: 4px 8px 4px 6px;
   transition: background 0.1s;
 }
 
-.tab-row:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.tab-row + .tab-row {
-  border-top: 1px solid #1c2033;
+.tab-chip:hover {
+  background: #262d45;
 }
 
 .favicon {
   border-radius: 2px;
   flex-shrink: 0;
-  height: 16px;
-  width: 16px;
+  height: 14px;
+  width: 14px;
 }
 
 .tab-title {
-  flex: 1;
+  color: #cbd5e1;
+  font-size: 12px;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #cbd5e1;
-  font-size: 13px;
 }
 
 .close-btn {
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: 3px;
   color: #6b7280;
   cursor: pointer;
   flex-shrink: 0;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
   opacity: 0;
-  padding: 1px 5px;
+  padding: 0 3px;
   transition: opacity 0.1s, background 0.1s, color 0.1s;
 }
 
-.tab-row:hover .close-btn {
+.tab-chip:hover .close-btn {
   opacity: 1;
 }
 

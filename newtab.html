@@ -7,11 +7,33 @@
   <link rel="stylesheet" href="newtab.css">
 </head>
 <body>
+
+  <!-- Shortcuts section -->
+  <div id="shortcuts-section">
+    <div id="shortcuts"></div>
+    <div id="shortcut-form-panel" hidden>
+      <input id="sf-name" type="text" placeholder="Site name" autocomplete="off">
+      <input id="sf-url"  type="text" placeholder="https://example.com" autocomplete="off">
+      <div class="sf-buttons">
+        <button id="sf-save">Save</button>
+        <button id="sf-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab dashboard -->
   <div id="topbar">
     <input id="search" type="text" placeholder="Search tabs…" autocomplete="off" spellcheck="false">
     <span id="summary"></span>
   </div>
   <div id="grid"></div>
+
+  <!-- Custom context menu for shortcuts -->
+  <div id="ctx-menu" hidden>
+    <button id="ctx-edit">Edit</button>
+    <button id="ctx-remove">Remove</button>
+  </div>
+
   <script src="newtab.js"></script>
 </body>
 </html>
