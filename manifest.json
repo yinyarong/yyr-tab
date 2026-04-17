@@ -3,7 +3,7 @@
   "name": "YYR Tab",
   "version": "1.0",
   "description": "Custom new tab page — tab dashboard",
-  "permissions": ["tabs", "storage"],
+  "permissions": ["tabs", "storage", "bookmarks"],
   "chrome_url_overrides": {
     "newtab": "newtab.html"
   }

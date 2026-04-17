@@ -383,6 +383,268 @@ async function render() {
   });
 }
 
+// ── Bookmarks bar ────────────────────────────────────────────────────────────
+
+// chrome.bookmarks.getTree returns the full bookmark tree.
+// Index [0] is the invisible root; its children are the well-known folders:
+//   [0] Bookmarks bar  [1] Other bookmarks  [2] Mobile bookmarks
+async function loadBookmarksBar() {
+  const tree = await chrome.bookmarks.getTree();
+  const barFolder = tree[0]?.children?.[0]; // "Bookmarks bar"
+  if (!barFolder?.children) return;
+  renderBookmarksBar(barFolder.children);
+}
+
+function faviconForBookmark(url) {
+  try {
+    const { hostname } = new URL(url);
+    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=16`;
+  } catch {
+    return FALLBACK_FAVICON;
+  }
+}
+
+function buildBookmarkItem(node) {
+  const btn = document.createElement('button');
+  btn.className = node.url ? 'bm-item' : 'bm-item bm-folder';
+
+  if (node.url) {
+    const img = document.createElement('img');
+    img.className = 'bm-favicon';
+    img.src = faviconForBookmark(node.url);
+    img.addEventListener('error', () => { img.src = FALLBACK_FAVICON; });
+
+    const label = document.createElement('span');
+    label.className = 'bm-label';
+    label.textContent = node.title || node.url;
+
+    btn.appendChild(img);
+    btn.appendChild(label);
+    btn.addEventListener('click', () => chrome.tabs.create({ url: node.url }));
+  } else {
+    const label = document.createElement('span');
+    label.className = 'bm-label';
+    label.textContent = node.title;
+
+    const arrow = document.createElement('span');
+    arrow.className = 'bm-arrow';
+    arrow.textContent = '▾';
+
+    btn.appendChild(label);
+    btn.appendChild(arrow);
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleBookmarkDropdown(btn, node.title, node.children ?? []);
+    });
+  }
+
+  btn.addEventListener('contextmenu', (e) => showBmCtxMenu(e, node));
+  return btn;
+}
+
+function renderBookmarksBar(nodes) {
+  const bar = document.getElementById('bookmarks-bar');
+  bar.innerHTML = '';
+  nodes.forEach(node => bar.appendChild(buildBookmarkItem(node)));
+}
+
+// ── Bookmark folder dropdown ──────────────────────────────────────────────────
+//
+// Uses a drill-down stack: each time the user clicks a sub-folder, that level
+// is pushed onto dropdownNav and the dropdown re-renders. The back button pops.
+
+let dropdownAnchor = null;
+let dropdownNav    = []; // stack of { title, children }
+
+function toggleBookmarkDropdown(anchor, title, children) {
+  const dropdown = document.getElementById('bookmark-dropdown');
+
+  if (dropdownAnchor === anchor && !dropdown.hidden) {
+    hideBookmarkDropdown();
+    return;
+  }
+
+  dropdownAnchor = anchor;
+  dropdownNav    = [{ title, children }];
+  renderDropdown();
+  positionDropdown(anchor);
+}
+
+function renderDropdown() {
+  const dropdown = document.getElementById('bookmark-dropdown');
+  const current  = dropdownNav[dropdownNav.length - 1];
+  dropdown.innerHTML = '';
+  dropdown.hidden = false;
+
+  // Back button when inside a sub-folder.
+  if (dropdownNav.length > 1) {
+    const back = document.createElement('button');
+    back.className = 'bm-drop-back';
+    back.textContent = '‹ ' + dropdownNav[dropdownNav.length - 2].title;
+    back.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdownNav.pop();
+      renderDropdown();
+    });
+    dropdown.appendChild(back);
+  }
+
+  if (!current.children.length) {
+    const empty = document.createElement('span');
+    empty.className = 'bm-empty';
+    empty.textContent = '(empty)';
+    dropdown.appendChild(empty);
+    return;
+  }
+
+  current.children.forEach(node => {
+    const item = document.createElement('button');
+    item.className = 'bm-drop-item';
+
+    if (node.url) {
+      const img = document.createElement('img');
+      img.className = 'bm-favicon';
+      img.src = faviconForBookmark(node.url);
+      img.addEventListener('error', () => { img.src = FALLBACK_FAVICON; });
+      item.appendChild(img);
+    } else {
+      const icon = document.createElement('span');
+      icon.className = 'bm-folder-icon';
+      icon.textContent = '▶';
+      item.appendChild(icon);
+    }
+
+    const label = document.createElement('span');
+    label.className = 'bm-drop-label';
+    label.textContent = node.title || node.url || '(untitled)';
+    item.appendChild(label);
+
+    if (node.url) {
+      item.addEventListener('click', () => {
+        chrome.tabs.create({ url: node.url });
+        hideBookmarkDropdown();
+      });
+    } else {
+      // Drill into sub-folder.
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdownNav.push({ title: node.title, children: node.children ?? [] });
+        renderDropdown();
+      });
+    }
+
+    item.addEventListener('contextmenu', (e) => {
+      hideBookmarkDropdown();
+      showBmCtxMenu(e, node);
+    });
+
+    dropdown.appendChild(item);
+  });
+}
+
+function positionDropdown(anchor) {
+  const dropdown = document.getElementById('bookmark-dropdown');
+  const rect = anchor.getBoundingClientRect();
+  dropdown.style.left = `${rect.left}px`;
+  dropdown.style.top  = `${rect.bottom + 4}px`;
+
+  const dr = dropdown.getBoundingClientRect();
+  if (dr.right > window.innerWidth) {
+    dropdown.style.left = `${rect.right - dr.width}px`;
+  }
+}
+
+function hideBookmarkDropdown() {
+  document.getElementById('bookmark-dropdown').hidden = true;
+  dropdownAnchor = null;
+  dropdownNav    = [];
+}
+
+// ── Bookmark context menu & edit ─────────────────────────────────────────────
+
+let bmCtxTarget    = null; // bookmark node being acted on
+let bmEditOrigin   = { x: 0, y: 0 }; // where to place the edit panel
+let bmCtxOpenedAt  = 0;   // timestamp of last ctx menu open
+
+function showBmCtxMenu(e, node) {
+  e.preventDefault();
+  e.stopPropagation();
+  bmCtxTarget = node;
+
+  const menu = document.getElementById('bm-ctx-menu');
+  menu.hidden = false;
+  menu.style.left = `${e.clientX}px`;
+  menu.style.top  = `${e.clientY}px`;
+
+  const r = menu.getBoundingClientRect();
+  if (r.right  > window.innerWidth)  menu.style.left = `${e.clientX - r.width}px`;
+  if (r.bottom > window.innerHeight) menu.style.top  = `${e.clientY - r.height}px`;
+
+  bmEditOrigin  = { x: e.clientX, y: e.clientY };
+  bmCtxOpenedAt = Date.now();
+}
+
+function hideBmCtxMenu() {
+  document.getElementById('bm-ctx-menu').hidden = true;
+}
+
+function openBmEditPanel() {
+  hideBmCtxMenu();
+  const node  = bmCtxTarget;
+  const panel = document.getElementById('bm-edit-panel');
+  const urlEl = document.getElementById('bm-edit-url');
+
+  document.getElementById('bm-edit-title').value = node.title || '';
+  urlEl.value  = node.url || '';
+  urlEl.hidden = !node.url; // folders have no URL field
+
+  panel.hidden = false;
+  panel.style.left = `${bmEditOrigin.x}px`;
+  panel.style.top  = `${bmEditOrigin.y}px`;
+
+  const r = panel.getBoundingClientRect();
+  if (r.right  > window.innerWidth)  panel.style.left = `${bmEditOrigin.x - r.width}px`;
+  if (r.bottom > window.innerHeight) panel.style.top  = `${bmEditOrigin.y - r.height}px`;
+
+  document.getElementById('bm-edit-title').focus();
+}
+
+function closeBmEditPanel() {
+  document.getElementById('bm-edit-panel').hidden = true;
+  bmCtxTarget = null;
+}
+
+async function saveBmEdit() {
+  if (!bmCtxTarget) return;
+  const title = document.getElementById('bm-edit-title').value.trim();
+  if (!title) return;
+
+  const changes = { title };
+  if (bmCtxTarget.url) {
+    let url = document.getElementById('bm-edit-url').value.trim();
+    if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+    if (url) changes.url = url;
+  }
+
+  // chrome.bookmarks.update modifies the title and/or URL of an existing bookmark.
+  await chrome.bookmarks.update(bmCtxTarget.id, changes);
+  closeBmEditPanel();
+  loadBookmarksBar();
+}
+
+async function deleteBm() {
+  if (!bmCtxTarget) return;
+  // removeTree is required for folders; remove works only on leaf bookmarks.
+  if (bmCtxTarget.url) {
+    await chrome.bookmarks.remove(bmCtxTarget.id);
+  } else {
+    await chrome.bookmarks.removeTree(bmCtxTarget.id);
+  }
+  hideBmCtxMenu();
+  bmCtxTarget = null;
+  loadBookmarksBar();
+}
+
 // ── Tab/window event listeners ───────────────────────────────────────────────
 
 chrome.tabs.onCreated.addListener(scheduleRefresh);
@@ -416,10 +678,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderShortcuts();
   });
 
-  // Any click outside the context menu dismisses it.
+  // Prevent clicks inside either bookmark floating element from bubbling to the
+  // document dismissal handler — without this, clicking "Edit" would open the
+  // panel and then immediately close it because the click target is not inside
+  // #bm-edit-panel, triggering closeBmEditPanel() on the same event.
+  document.getElementById('bm-ctx-menu').addEventListener('click', (e) => e.stopPropagation());
+  document.getElementById('bm-edit-panel').addEventListener('click', (e) => e.stopPropagation());
+
+  // Bookmark context menu actions.
+  document.getElementById('bm-ctx-edit').addEventListener('click', openBmEditPanel);
+  document.getElementById('bm-ctx-delete').addEventListener('click', deleteBm);
+
+  // Bookmark edit panel actions.
+  document.getElementById('bm-edit-save').addEventListener('click', saveBmEdit);
+  document.getElementById('bm-edit-cancel').addEventListener('click', closeBmEditPanel);
+  document.getElementById('bm-edit-title').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  saveBmEdit();
+    if (e.key === 'Escape') closeBmEditPanel();
+  });
+  document.getElementById('bm-edit-url').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  saveBmEdit();
+    if (e.key === 'Escape') closeBmEditPanel();
+  });
+
+  // Any click outside floating panels dismisses them.
+  // button !== 0 means right-click or middle-click — ignore those so a
+  // right-click on a bookmark doesn't instantly hide the context menu.
   document.addEventListener('click', (e) => {
+    if (e.button !== 0) return;
     if (!document.getElementById('ctx-menu').contains(e.target)) {
       hideContextMenu();
+    }
+    if (!document.getElementById('bookmark-dropdown').contains(e.target)) {
+      hideBookmarkDropdown();
+    }
+    if (!document.getElementById('bm-ctx-menu').contains(e.target) && Date.now() - bmCtxOpenedAt > 300) {
+      hideBmCtxMenu();
+    }
+    if (!document.getElementById('bm-edit-panel').contains(e.target)) {
+      closeBmEditPanel();
     }
   });
 
@@ -438,8 +735,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     render();
   });
 
-  // Load persisted shortcuts before first paint, then render both sections.
+  // Load persisted shortcuts before first paint, then render all sections.
   await loadShortcuts();
   renderShortcuts();
+  loadBookmarksBar();
   render();
 });

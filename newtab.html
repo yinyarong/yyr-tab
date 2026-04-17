@@ -21,6 +21,25 @@
     </div>
   </div>
 
+  <!-- Bookmarks bar -->
+  <div id="bookmarks-bar"></div>
+  <!-- Folder dropdown (shared, repositioned on each open) -->
+  <div id="bookmark-dropdown" hidden></div>
+  <!-- Bookmark right-click context menu -->
+  <div id="bm-ctx-menu" hidden>
+    <button id="bm-ctx-edit">Edit</button>
+    <button id="bm-ctx-delete">Delete</button>
+  </div>
+  <!-- Bookmark inline edit panel (fixed, appears near cursor) -->
+  <div id="bm-edit-panel" hidden>
+    <input id="bm-edit-title" type="text" placeholder="Name" autocomplete="off">
+    <input id="bm-edit-url" type="text" placeholder="URL" autocomplete="off">
+    <div class="bm-edit-btns">
+      <button id="bm-edit-save">Save</button>
+      <button id="bm-edit-cancel">Cancel</button>
+    </div>
+  </div>
+
   <!-- Tab dashboard -->
   <div id="topbar">
     <div id="search-wrapper">
