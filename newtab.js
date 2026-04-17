@@ -434,8 +434,30 @@ function buildBookmarkItem(node) {
     btn.appendChild(arrow);
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      toggleBookmarkDropdown(btn, node.title, node.children ?? []);
+      toggleBookmarkDropdown(btn, node);
     });
+
+    // Auto-open this folder's dropdown after a short hover while a drag is active.
+    btn.addEventListener('dragover', (e) => {
+      if (!bmDrag) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dropdownAnchor === btn) return;
+      if (bmDragHoverAnchor === btn) return;
+      cancelBmDragHover();
+      bmDragHoverAnchor = btn;
+      btn.classList.add('drag-hover');
+      bmDragHoverTimer = setTimeout(() => {
+        toggleBookmarkDropdown(btn, node);
+        if (bmDragHoverAnchor) bmDragHoverAnchor.classList.remove('drag-hover');
+        bmDragHoverAnchor = null;
+        bmDragHoverTimer = null;
+      }, 400);
+    });
+    btn.addEventListener('dragleave', () => {
+      if (bmDragHoverAnchor === btn) cancelBmDragHover();
+    });
+    btn.addEventListener('drop', (e) => { e.preventDefault(); });
   }
 
   btn.addEventListener('contextmenu', (e) => showBmCtxMenu(e, node));
@@ -456,7 +478,7 @@ function renderBookmarksBar(nodes) {
 let dropdownAnchor = null;
 let dropdownNav    = []; // stack of { title, children }
 
-function toggleBookmarkDropdown(anchor, title, children) {
+function toggleBookmarkDropdown(anchor, node) {
   const dropdown = document.getElementById('bookmark-dropdown');
 
   if (dropdownAnchor === anchor && !dropdown.hidden) {
@@ -465,7 +487,7 @@ function toggleBookmarkDropdown(anchor, title, children) {
   }
 
   dropdownAnchor = anchor;
-  dropdownNav    = [{ title, children }];
+  dropdownNav    = [{ id: node.id, title: node.title, children: node.children ?? [] }];
   renderDropdown();
   positionDropdown(anchor);
 }
@@ -528,14 +550,46 @@ function renderDropdown() {
       // Drill into sub-folder.
       item.addEventListener('click', (e) => {
         e.stopPropagation();
-        dropdownNav.push({ title: node.title, children: node.children ?? [] });
+        dropdownNav.push({ id: node.id, title: node.title, children: node.children ?? [] });
         renderDropdown();
+      });
+
+      // Auto-drill into this sub-folder after a short drag-hover.
+      item.addEventListener('dragover', () => {
+        if (!bmDrag) return;
+        if (bmDrag.id === node.id) return;       // can't drop a folder into itself
+        if (bmDragHoverAnchor === item) return;  // timer already running for this item
+        cancelBmDragHover();
+        bmDragHoverAnchor = item;
+        item.classList.add('drag-hover');
+        bmDragHoverTimer = setTimeout(() => {
+          bmDragHoverAnchor = null;
+          bmDragHoverTimer = null;
+          dropdownNav.push({ id: node.id, title: node.title, children: node.children ?? [] });
+          renderDropdown();
+        }, 400);
+      });
+      item.addEventListener('dragleave', () => {
+        if (bmDragHoverAnchor === item) cancelBmDragHover();
       });
     }
 
     item.addEventListener('contextmenu', (e) => {
-      hideBookmarkDropdown();
       showBmCtxMenu(e, node);
+    });
+
+    item.draggable = true;
+    item.addEventListener('dragstart', (e) => {
+      bmDrag = { id: node.id, parentId: node.parentId, index: node.index };
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', node.id);
+      item.classList.add('dragging');
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      clearBmDragIndicators();
+      cancelBmDragHover();
+      bmDrag = null;
     });
 
     dropdown.appendChild(item);
@@ -547,17 +601,99 @@ function positionDropdown(anchor) {
   const rect = anchor.getBoundingClientRect();
   dropdown.style.left = `${rect.left}px`;
   dropdown.style.top  = `${rect.bottom + 4}px`;
-
-  const dr = dropdown.getBoundingClientRect();
-  if (dr.right > window.innerWidth) {
-    dropdown.style.left = `${rect.right - dr.width}px`;
-  }
+  dropdown.style.maxWidth = `${window.innerWidth - rect.left - 8}px`;
 }
 
 function hideBookmarkDropdown() {
   document.getElementById('bookmark-dropdown').hidden = true;
   dropdownAnchor = null;
   dropdownNav    = [];
+}
+
+// ── Bookmark drag & drop ─────────────────────────────────────────────────────
+
+let bmDrag            = null; // { id, parentId, index } while an item is being dragged
+let bmDragHoverTimer  = null; // pending auto-open timer for a hovered folder button
+let bmDragHoverAnchor = null;
+
+function clearBmDragIndicators() {
+  document.querySelectorAll('.drag-insert-above, .drag-insert-below')
+    .forEach(el => el.classList.remove('drag-insert-above', 'drag-insert-below'));
+}
+
+function cancelBmDragHover() {
+  clearTimeout(bmDragHoverTimer);
+  bmDragHoverTimer = null;
+  if (bmDragHoverAnchor) bmDragHoverAnchor.classList.remove('drag-hover');
+  bmDragHoverAnchor = null;
+}
+
+function onBmDropdownDragOver(e) {
+  if (!bmDrag) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const dropdown = document.getElementById('bookmark-dropdown');
+  const items = [...dropdown.querySelectorAll('.bm-drop-item')];
+  clearBmDragIndicators();
+  if (!items.length) return;
+  for (const el of items) {
+    const r = el.getBoundingClientRect();
+    if (e.clientY < r.top + r.height / 2) {
+      el.classList.add('drag-insert-above');
+      return;
+    }
+  }
+  items[items.length - 1].classList.add('drag-insert-below');
+}
+
+function onBmDropdownDragLeave(e) {
+  const dropdown = document.getElementById('bookmark-dropdown');
+  if (!dropdown.contains(e.relatedTarget)) clearBmDragIndicators();
+}
+
+async function onBmDropdownDrop(e) {
+  if (!bmDrag) return;
+  e.preventDefault();
+  const current = dropdownNav[dropdownNav.length - 1];
+  const targetParentId = current.id;
+  const dropdown = document.getElementById('bookmark-dropdown');
+  const items = [...dropdown.querySelectorAll('.bm-drop-item')];
+
+  let targetIndex = items.length;
+  for (let i = 0; i < items.length; i++) {
+    const r = items[i].getBoundingClientRect();
+    if (e.clientY < r.top + r.height / 2) { targetIndex = i; break; }
+  }
+
+  clearBmDragIndicators();
+
+  // Don't let a folder be dropped into itself.
+  if (bmDrag.id === targetParentId) { bmDrag = null; return; }
+
+  // chrome.bookmarks.move: within the same parent, indices shift once the
+  // source is removed, so a forward move needs the target minus one.
+  let finalIndex = targetIndex;
+  if (bmDrag.parentId === targetParentId && targetIndex > bmDrag.index) {
+    finalIndex = targetIndex - 1;
+  }
+  const sourceId = bmDrag.id;
+  const noop = bmDrag.parentId === targetParentId && finalIndex === bmDrag.index;
+  bmDrag = null;
+  if (noop) return;
+
+  try {
+    await chrome.bookmarks.move(sourceId, { parentId: targetParentId, index: finalIndex });
+  } catch (err) {
+    console.error('Bookmark move failed:', err);
+    return;
+  }
+
+  await loadBookmarksBar();
+  const [refreshed] = await chrome.bookmarks.getSubTree(targetParentId);
+  if (refreshed) {
+    dropdownNav[dropdownNav.length - 1].children = refreshed.children ?? [];
+    renderDropdown();
+  }
 }
 
 // ── Bookmark context menu & edit ─────────────────────────────────────────────
@@ -590,6 +726,7 @@ function hideBmCtxMenu() {
 
 function openBmEditPanel() {
   hideBmCtxMenu();
+  hideBookmarkDropdown();
   const node  = bmCtxTarget;
   const panel = document.getElementById('bm-edit-panel');
   const urlEl = document.getElementById('bm-edit-url');
@@ -641,6 +778,7 @@ async function deleteBm() {
     await chrome.bookmarks.removeTree(bmCtxTarget.id);
   }
   hideBmCtxMenu();
+  hideBookmarkDropdown();
   bmCtxTarget = null;
   loadBookmarksBar();
 }
@@ -700,6 +838,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.key === 'Enter')  saveBmEdit();
     if (e.key === 'Escape') closeBmEditPanel();
   });
+
+  // Dropdown-wide drag listeners: insertion indicator + drop handler.
+  const bmDropdown = document.getElementById('bookmark-dropdown');
+  bmDropdown.addEventListener('dragover',  onBmDropdownDragOver);
+  bmDropdown.addEventListener('dragleave', onBmDropdownDragLeave);
+  bmDropdown.addEventListener('drop',      onBmDropdownDrop);
 
   // Any click outside floating panels dismisses them.
   // button !== 0 means right-click or middle-click — ignore those so a

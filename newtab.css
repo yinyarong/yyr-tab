@@ -21,14 +21,12 @@ body {
 #bookmarks-bar {
   display: flex;
   align-items: center;
-  gap: 2px;
+  flex-wrap: wrap;
+  column-gap: 6px;
+  row-gap: 4px;
   justify-content: center;
   margin-bottom: 16px;
-  overflow-x: auto;
-  scrollbar-width: none;
 }
-
-#bookmarks-bar::-webkit-scrollbar { display: none; }
 
 .bm-item {
   align-items: center;
@@ -43,7 +41,7 @@ body {
   gap: 5px;
   padding: 4px 8px;
   transition: background 0.1s;
-  max-width: 160px;
+  max-width: 140px;
 }
 
 .bm-item:hover { background: rgba(255, 255, 255, 0.07); }
@@ -191,6 +189,7 @@ body {
   display: flex;
   font-size: 13px;
   gap: 8px;
+  min-width: 0;
   padding: 7px 14px;
   text-align: left;
   transition: background 0.1s;
@@ -219,6 +218,14 @@ body {
   font-size: 12px;
   padding: 8px 14px;
 }
+
+/* ── Bookmark drag & drop ───────────────────────────────── */
+
+.bm-drop-item.dragging { opacity: 0.4; }
+.bm-drop-item.drag-insert-above { box-shadow: inset 0 2px 0 #5b6cf8; }
+.bm-drop-item.drag-insert-below { box-shadow: inset 0 -2px 0 #5b6cf8; }
+.bm-item.drag-hover,
+.bm-drop-item.drag-hover { background: rgba(91, 108, 248, 0.2); }
 
 /* ── Shortcuts section ──────────────────────────────────── */
 
