@@ -18,18 +18,15 @@ let editingSlot = null;                                // null | slot index
 
 // ── Shortcut persistence ────────────────────────────────────────────────────
 
-// chrome.storage.sync persists data in the user's Google account and syncs it
-// across every Chrome instance where they are signed in — unlike localStorage,
-// which is local to one machine and one browser profile.
 async function loadShortcuts() {
-  const result = await chrome.storage.sync.get('shortcuts');
+  const result = await chrome.storage.local.get('shortcuts');
   if (Array.isArray(result.shortcuts)) {
     shortcuts = result.shortcuts;
   }
 }
 
 async function saveShortcuts() {
-  await chrome.storage.sync.set({ shortcuts });
+  await chrome.storage.local.set({ shortcuts });
 }
 
 // ── Shortcut helpers ────────────────────────────────────────────────────────

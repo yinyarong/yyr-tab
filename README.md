@@ -1,0 +1,95 @@
+# YYR Tab
+
+A custom Chrome new tab extension that replaces the default new tab page with a personal dashboard — quick-access shortcuts at the top and a live view of all your open tabs below.
+
+Built with vanilla HTML, CSS, and JavaScript. No frameworks, no build tools.
+
+---
+
+## Features
+
+### Shortcuts Grid
+- 12 customisable shortcut slots arranged in a 6 × 2 grid
+- Each slot displays the site's favicon and name inside a circular button, matching Chrome's default new tab style
+- Click any filled slot to open the site in a new tab
+- Click an empty slot to add a shortcut — enter a name and URL directly on the page (no popups)
+- Right-click a filled slot to **Edit** or **Remove** it
+- All shortcuts are saved locally using `chrome.storage.local` and persist across browser restarts
+
+### Tab Dashboard
+- Shows every open Chrome window as a full-width row
+- Tabs within each window are displayed as compact horizontal chips (favicon + title)
+- Chips are automatically grouped by category — **Video**, **Social**, **AI**, **Dev**, and **Other** — with category labels separating the groups
+- Multiple tabs in the same category stack vertically within their group
+- Click a chip to switch to that tab and bring its window to the front
+- Hover over a chip to reveal a × button that closes the tab
+- The dashboard updates live as tabs open, close, move, or change title — no manual refresh needed
+
+### Search
+- A search box above the dashboard filters tabs in real time by title or URL
+- Windows with no matching tabs are hidden automatically
+- Search state is preserved across live re-renders
+
+---
+
+## Installation
+
+### From Source (Manual Setup)
+
+No build step is required. The extension runs directly from the project folder.
+
+1. **Clone or download** this repository to your local machine:
+   ```bash
+   git clone https://github.com/your-username/yyr-tab.git
+   ```
+   Or download and unzip the repository as a folder.
+
+2. **Open Chrome** and navigate to:
+   ```
+   chrome://extensions/
+   ```
+
+3. **Enable Developer mode** using the toggle in the top-right corner.
+
+4. Click **Load unpacked** and select the `yyr-tab` folder.
+
+5. Open a new tab — the dashboard will appear immediately.
+
+### After Any Code Change
+
+Go to `chrome://extensions/`, click the **reload icon** (↺) on the YYR Tab card, then open a new tab to see the updated version.
+
+---
+
+## File Structure
+
+```
+yyr-tab/
+├── manifest.json   # Extension config (Manifest V3)
+├── newtab.html     # Page shell
+├── newtab.css      # All styles
+└── newtab.js       # All runtime logic
+```
+
+---
+
+## Permissions Used
+
+| Permission | Purpose |
+|---|---|
+| `tabs` | Read tab titles, URLs, and favicons; switch and close tabs |
+| `storage` | Save shortcuts locally via `chrome.storage.local` |
+
+---
+
+## License
+
+MIT License
+
+Copyright (c) 2025 Yarong Yin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
