@@ -1,32 +1,135 @@
-* {
+*, *::before, *::after {
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
 }
 
 body {
-  height: 100vh;
+  background: #0f1117;
+  color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+/* ── Top bar ────────────────────────────────────────────── */
+
+#topbar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: #1a1a2e;
-  color: #eaeaea;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
-.container {
-  text-align: center;
+#search {
+  flex: 0 0 280px;
+  background: #1e2130;
+  border: 1px solid #2d3148;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 14px;
+  outline: none;
+  padding: 8px 12px;
+  transition: border-color 0.15s;
 }
 
-h1 {
-  font-size: 3rem;
-  font-weight: 300;
-  letter-spacing: 0.05em;
-  margin-bottom: 1rem;
+#search:focus {
+  border-color: #5b6cf8;
 }
 
-#clock {
-  font-size: 1.5rem;
-  opacity: 0.6;
-  letter-spacing: 0.1em;
+#search::placeholder {
+  color: #4a5068;
+}
+
+#summary {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+/* ── Window grid ────────────────────────────────────────── */
+
+#grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+/* ── Window column ──────────────────────────────────────── */
+
+.window-col {
+  background: #161b27;
+  border: 1px solid #222840;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.window-header {
+  background: #1e2336;
+  color: #8892b0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 8px 12px;
+  text-transform: uppercase;
+}
+
+/* ── Tab rows ───────────────────────────────────────────── */
+
+.tab-row {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+  position: relative;
+  transition: background 0.1s;
+}
+
+.tab-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-row + .tab-row {
+  border-top: 1px solid #1c2033;
+}
+
+.favicon {
+  border-radius: 2px;
+  flex-shrink: 0;
+  height: 16px;
+  width: 16px;
+}
+
+.tab-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: #6b7280;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0;
+  padding: 1px 5px;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
+}
+
+.tab-row:hover .close-btn {
+  opacity: 1;
+}
+
+.close-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
 }

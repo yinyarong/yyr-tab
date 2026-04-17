@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "YYR Tab",
   "version": "1.0",
-  "description": "Custom new tab page",
+  "description": "Custom new tab page — tab dashboard",
+  "permissions": ["tabs"],
   "chrome_url_overrides": {
     "newtab": "newtab.html"
   }
