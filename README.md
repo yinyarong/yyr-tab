@@ -16,6 +16,17 @@ Built with vanilla HTML, CSS, and JavaScript. No frameworks, no build tools.
 - Right-click a filled slot to **Edit** or **Remove** it
 - All shortcuts are saved locally using `chrome.storage.local` and persist across browser restarts
 
+### Bookmarks Bar
+- Mirrors your Chrome bookmarks bar directly below the shortcuts grid
+- Click a bookmark to open it in a new tab; click a folder to open a dropdown listing its contents
+- Dropdowns support drill-down into sub-folders, with a back button to return
+- Right-click any bookmark or folder to **Edit** (rename / change URL) or **Delete**
+- **Drag-and-drop** to reorganise: drag any item inside a dropdown and drop it at a different position to reorder, or drop it into another folder to move it
+  - Hovering a top-level folder button while dragging auto-opens that folder's dropdown after ~400ms
+  - Hovering a sub-folder row inside a dropdown drills into it the same way, so you can drop into deeply nested folders
+  - A blue insertion line shows exactly where the item will land
+- All changes are persisted via the Chrome bookmarks API, so they stay in sync with the browser's native bookmarks
+
 ### Tab Dashboard
 - Shows every open Chrome window as a full-width row
 - Tabs within each window are displayed as compact horizontal chips (favicon + title)
@@ -79,6 +90,7 @@ yyr-tab/
 |---|---|
 | `tabs` | Read tab titles, URLs, and favicons; switch and close tabs |
 | `storage` | Save shortcuts locally via `chrome.storage.local` |
+| `bookmarks` | Read, edit, move, and delete Chrome bookmarks for the bookmarks bar |
 
 ---
 
