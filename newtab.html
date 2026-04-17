@@ -23,7 +23,10 @@
 
   <!-- Tab dashboard -->
   <div id="topbar">
-    <input id="search" type="text" placeholder="Search tabs…" autocomplete="off" spellcheck="false">
+    <div id="search-wrapper">
+      <input id="search" type="text" placeholder="Search tabs…" autocomplete="off" spellcheck="false">
+      <button id="search-clear" hidden aria-label="Clear search">×</button>
+    </div>
     <span id="summary"></span>
   </div>
   <div id="grid"></div>

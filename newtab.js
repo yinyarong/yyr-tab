@@ -204,6 +204,35 @@ function hideContextMenu() {
   ctxSlotIndex = null;
 }
 
+// ── Tab close animation ──────────────────────────────────────────────────────
+
+const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#c77dff', '#ff9f1c'];
+
+function spawnConfetti(x, y) {
+  const count = 10;
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement('div');
+    el.className = 'confetti-particle';
+
+    // Spread particles evenly around a full circle with a little randomness,
+    // biased slightly upward so the burst reads as an explosion rather than a drop.
+    const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.8;
+    const speed = 55 + Math.random() * 55;
+    const dx    = Math.cos(angle) * speed;
+    const dy    = Math.sin(angle) * speed - 25;
+    const rot   = (Math.random() - 0.5) * 640;
+
+    el.style.cssText =
+      `left:${x}px;top:${y}px;` +
+      `background:${CONFETTI_COLORS[i % CONFETTI_COLORS.length]};` +
+      `--dx:${dx}px;--dy:${dy}px;--rot:${rot}deg;` +
+      `width:${5 + Math.random() * 5}px;height:${5 + Math.random() * 5}px;`;
+
+    document.body.appendChild(el);
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }
+}
+
 // ── Tab dashboard ────────────────────────────────────────────────────────────
 
 const DEBOUNCE_MS = 100;
@@ -260,7 +289,12 @@ function buildTabChip(tab) {
   closeBtn.title = 'Close tab';
   closeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    chrome.tabs.remove(tab.id);
+    const r = chip.getBoundingClientRect();
+    spawnConfetti(r.left + r.width / 2, r.top + r.height / 2);
+    chip.classList.add('chip-closing');
+    // Remove the tab only after the swoosh completes so the animation isn't
+    // cut short by the re-render that fires on chrome.tabs.onRemoved.
+    chip.addEventListener('animationend', () => chrome.tabs.remove(tab.id), { once: true });
   });
 
   chip.addEventListener('click', () => {
@@ -389,7 +423,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  document.getElementById('search').addEventListener('input', render);
+  const searchEl = document.getElementById('search');
+  const clearBtn = document.getElementById('search-clear');
+
+  searchEl.addEventListener('input', () => {
+    clearBtn.hidden = searchEl.value.length === 0;
+    render();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    searchEl.value = '';
+    clearBtn.hidden = true;
+    searchEl.focus();
+    render();
+  });
 
   // Load persisted shortcuts before first paint, then render both sections.
   await loadShortcuts();
