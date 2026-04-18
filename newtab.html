@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="newtab.css">
 </head>
 <body>
+
+  <!-- Click firework canvas overlay (full-viewport, pointer-events: none) -->
+  <canvas id="click-fx"></canvas>
 
   <!-- Shortcuts section -->
   <div id="shortcuts-section">
@@ -54,6 +57,25 @@
   <div id="ctx-menu" hidden>
     <button id="ctx-edit">Edit</button>
     <button id="ctx-remove">Remove</button>
+  </div>
+
+  <!-- Theme switcher (top-right) -->
+  <div id="theme-switcher">
+    <div id="theme-modes">
+      <button class="theme-mode-btn" data-mode="day" type="button">
+        <span class="theme-mode-bubble theme-bubble-day"></span>
+        <span class="theme-mode-label">Day</span>
+      </button>
+      <button class="theme-mode-btn" data-mode="night" type="button">
+        <span class="theme-mode-bubble theme-bubble-night"></span>
+        <span class="theme-mode-label">Night</span>
+      </button>
+      <button class="theme-mode-btn" data-mode="system" type="button">
+        <span class="theme-mode-bubble theme-bubble-system"></span>
+        <span class="theme-mode-label">System</span>
+      </button>
+    </div>
+    <div id="theme-colors" hidden></div>
   </div>
 
   <script src="newtab.js"></script>

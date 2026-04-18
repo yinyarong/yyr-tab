@@ -65,6 +65,7 @@ function buildEmptySlot(index) {
   btn.appendChild(label);
 
   btn.addEventListener('click', () => openEditForm(index));
+  attachShortcutDropHandlers(btn, index);
   return btn;
 }
 
@@ -97,7 +98,60 @@ function buildFilledSlot(index, { name, url }) {
     showContextMenu(e.clientX, e.clientY, index);
   });
 
+  attachShortcutDragHandlers(btn, index);
+  attachShortcutDropHandlers(btn, index);
   return btn;
+}
+
+// ── Shortcut drag & drop ────────────────────────────────────────────────────
+//
+// Insert-and-shift reordering (matches Chrome's own new-tab page): dragging
+// slot 0 onto slot 5 yields [1,2,3,4,5,0,6,...]. Empty slots accept drops but
+// are not draggable themselves.
+
+let dragSourceIndex = null;
+
+function attachShortcutDragHandlers(el, index) {
+  el.draggable = true;
+  el.addEventListener('dragstart', (e) => {
+    dragSourceIndex = index;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+    el.classList.add('dragging');
+  });
+  el.addEventListener('dragend', () => {
+    dragSourceIndex = null;
+    el.classList.remove('dragging');
+    document.querySelectorAll('.shortcut-slot.drag-over')
+      .forEach(node => node.classList.remove('drag-over'));
+  });
+}
+
+function attachShortcutDropHandlers(el, index) {
+  el.addEventListener('dragover', (e) => {
+    if (dragSourceIndex === null || dragSourceIndex === index) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    el.classList.add('drag-over');
+  });
+  el.addEventListener('dragleave', () => {
+    el.classList.remove('drag-over');
+  });
+  el.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    el.classList.remove('drag-over');
+    if (dragSourceIndex === null || dragSourceIndex === index) return;
+    const from = dragSourceIndex;
+    dragSourceIndex = null;
+    await moveShortcut(from, index);
+  });
+}
+
+async function moveShortcut(from, to) {
+  const [moved] = shortcuts.splice(from, 1);
+  shortcuts.splice(to, 0, moved);
+  await saveShortcuts();
+  renderShortcuts();
 }
 
 function buildEditingSlot() {
@@ -233,6 +287,91 @@ function spawnConfetti(x, y) {
   }
 }
 
+// ── Click firework (canvas particle system) ─────────────────────────────────
+//
+// One full-viewport canvas + one rAF loop drives all bursts. The loop only
+// runs while particles exist; spawnFirework() restarts it on the next click.
+
+const FX_COLORS = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#c77dff', '#ff9f1c', '#ff3df8', '#3df8e0'];
+const FX_PARTICLES_PER_BURST = 24;
+const FX_GRAVITY = 0.18;
+const FX_FRICTION = 0.985;
+
+let fxCtx = null;
+let fxParticles = [];
+let fxRafId = null;
+
+function initClickFx() {
+  const canvas = document.getElementById('click-fx');
+  fxCtx = canvas.getContext('2d');
+  resizeFxCanvas();
+  window.addEventListener('resize', resizeFxCanvas);
+}
+
+function resizeFxCanvas() {
+  const canvas = document.getElementById('click-fx');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = window.innerWidth  * dpr;
+  canvas.height = window.innerHeight * dpr;
+  canvas.style.width  = `${window.innerWidth}px`;
+  canvas.style.height = `${window.innerHeight}px`;
+  // setTransform replaces (not multiplies) so resize calls don't compound.
+  fxCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function spawnFirework(x, y) {
+  for (let i = 0; i < FX_PARTICLES_PER_BURST; i++) {
+    const angle = (i / FX_PARTICLES_PER_BURST) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+    const speed = 2.5 + Math.random() * 4;
+    fxParticles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: 2 + Math.random() * 3,
+      color: FX_COLORS[Math.floor(Math.random() * FX_COLORS.length)],
+      life: 1, // 1 → 0 over its lifespan
+      decay: 0.012 + Math.random() * 0.012,
+    });
+  }
+  if (fxRafId === null) fxRafId = requestAnimationFrame(tickFx);
+}
+
+function tickFx() {
+  fxCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+  for (let i = fxParticles.length - 1; i >= 0; i--) {
+    const p = fxParticles[i];
+    p.vx *= FX_FRICTION;
+    p.vy = p.vy * FX_FRICTION + FX_GRAVITY;
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= p.decay;
+
+    if (p.life <= 0) {
+      fxParticles.splice(i, 1);
+      continue;
+    }
+
+    fxCtx.globalAlpha = p.life;
+    fxCtx.fillStyle = p.color;
+    fxCtx.beginPath();
+    fxCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    fxCtx.fill();
+  }
+  fxCtx.globalAlpha = 1;
+
+  if (fxParticles.length > 0) {
+    fxRafId = requestAnimationFrame(tickFx);
+  } else {
+    fxRafId = null;
+  }
+}
+
+// Skip clicks on interactive elements so typing/buttons aren't visually noisy.
+function shouldSpawnFxOn(target) {
+  return !target.closest('input, button, [contenteditable], a, select, textarea');
+}
+
 // ── Tab dashboard ────────────────────────────────────────────────────────────
 
 const DEBOUNCE_MS = 100;
@@ -334,6 +473,16 @@ function buildWindowRow(win, index, query) {
   label.className = 'window-row-label';
   label.textContent = `Window ${index + 1}`;
   row.appendChild(label);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'window-close-btn';
+  closeBtn.textContent = '×';
+  closeBtn.title = 'Close this window';
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    chrome.windows.remove(win.id);
+  });
+  row.appendChild(closeBtn);
 
   const content = document.createElement('div');
   content.className = 'window-row-content';
@@ -783,6 +932,109 @@ async function deleteBm() {
   loadBookmarksBar();
 }
 
+// ── Theme switcher ───────────────────────────────────────────────────────────
+//
+// Three modes: 'day' (light), 'night' (dark), 'system' (follow OS). Day and
+// night each carry their own accent color, persisted independently so toggling
+// modes keeps each one's last-chosen accent.
+
+const ACCENT_COLORS = [
+  '#ef4444', // red
+  '#f97316', // orange
+  '#eab308', // yellow
+  '#22c55e', // green
+  '#06b6d4', // cyan
+  '#a855f7', // purple
+  '#ec4899', // pink
+  '#6366f1', // indigo
+  '#84cc16', // lime
+];
+
+const DEFAULT_THEME = {
+  mode: 'system',
+  dayAccent: '#06b6d4',
+  nightAccent: '#6366f1',
+};
+
+let theme = { ...DEFAULT_THEME };
+let systemDarkMq = null;
+
+async function loadTheme() {
+  const result = await chrome.storage.local.get('theme');
+  if (result.theme && typeof result.theme === 'object') {
+    theme = { ...DEFAULT_THEME, ...result.theme };
+  }
+}
+
+async function saveTheme() {
+  await chrome.storage.local.set({ theme });
+}
+
+// Resolve 'system' to either 'day' or 'night' based on OS preference.
+function resolvedScheme() {
+  if (theme.mode === 'day') return 'day';
+  if (theme.mode === 'night') return 'night';
+  return systemDarkMq && systemDarkMq.matches ? 'night' : 'day';
+}
+
+function applyTheme() {
+  const scheme = resolvedScheme();
+  document.documentElement.dataset.theme = scheme === 'day' ? 'light' : 'dark';
+  const accent = scheme === 'day' ? theme.dayAccent : theme.nightAccent;
+  document.documentElement.style.setProperty('--accent', accent);
+  renderThemeSwitcher();
+}
+
+function renderThemeSwitcher() {
+  document.querySelectorAll('.theme-mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === theme.mode);
+  });
+
+  const colorsRow = document.getElementById('theme-colors');
+  if (theme.mode === 'system') {
+    colorsRow.hidden = true;
+    return;
+  }
+
+  const currentAccent = theme.mode === 'day' ? theme.dayAccent : theme.nightAccent;
+  colorsRow.innerHTML = '';
+  for (const color of ACCENT_COLORS) {
+    const dot = document.createElement('button');
+    dot.className = 'theme-color-dot';
+    dot.type = 'button';
+    if (color.toLowerCase() === currentAccent.toLowerCase()) {
+      dot.classList.add('selected');
+    }
+    dot.style.background = color;
+    dot.title = color;
+    dot.addEventListener('click', async () => {
+      if (theme.mode === 'day') theme.dayAccent = color;
+      else theme.nightAccent = color;
+      await saveTheme();
+      applyTheme();
+    });
+    colorsRow.appendChild(dot);
+  }
+  colorsRow.hidden = false;
+}
+
+function initThemeSwitcher() {
+  // matchMedia returns a MediaQueryList; .matches is the current state and
+  // 'change' fires whenever the OS preference flips (e.g., macOS Auto theme).
+  systemDarkMq = window.matchMedia('(prefers-color-scheme: dark)');
+  systemDarkMq.addEventListener('change', () => {
+    if (theme.mode === 'system') applyTheme();
+  });
+
+  document.querySelectorAll('.theme-mode-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      theme.mode = btn.dataset.mode;
+      await saveTheme();
+      applyTheme();
+    });
+  });
+}
+
 // ── Tab/window event listeners ───────────────────────────────────────────────
 
 chrome.tabs.onCreated.addListener(scheduleRefresh);
@@ -878,6 +1130,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     searchEl.focus();
     render();
   });
+
+  // Initialise the click firework canvas, then wire the global click listener.
+  // Listener is on document so it fires regardless of which element was clicked.
+  initClickFx();
+  document.addEventListener('click', (e) => {
+    if (e.button !== 0) return;
+    if (!shouldSpawnFxOn(e.target)) return;
+    spawnFirework(e.clientX, e.clientY);
+  });
+
+  // Theme: load + apply before first paint to avoid a flash of the wrong scheme.
+  await loadTheme();
+  initThemeSwitcher();
+  applyTheme();
 
   // Load persisted shortcuts before first paint, then render all sections.
   await loadShortcuts();
