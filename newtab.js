@@ -377,6 +377,13 @@ function shouldSpawnFxOn(target) {
 const DEBOUNCE_MS = 100;
 let debounceTimer = null;
 
+// ID of the Chrome window hosting this new-tab page. Used to highlight the
+// matching window-row and to short-circuit same-window tab drags.
+let currentWindowId = null;
+
+// In-flight cross-window tab drag: { tabId, windowId } or null.
+let tabDrag = null;
+
 function scheduleRefresh() {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(render, DEBOUNCE_MS);
@@ -441,10 +448,53 @@ function buildTabChip(tab) {
     chrome.windows.update(tab.windowId, { focused: true });
   });
 
+  chip.draggable = true;
+  chip.addEventListener('dragstart', (e) => {
+    tabDrag = { tabId: tab.id, windowId: tab.windowId };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify(tabDrag));
+    chip.classList.add('dragging');
+  });
+  chip.addEventListener('dragend', () => {
+    tabDrag = null;
+    chip.classList.remove('dragging');
+    document.querySelectorAll('.window-row.window-row--drop-target')
+      .forEach(node => node.classList.remove('window-row--drop-target'));
+  });
+
   chip.appendChild(favicon);
   chip.appendChild(title);
   chip.appendChild(closeBtn);
   return chip;
+}
+
+function attachWindowDropHandlers(row, win) {
+  row.addEventListener('dragover', (e) => {
+    if (!tabDrag || tabDrag.windowId === win.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    row.classList.add('window-row--drop-target');
+  });
+  row.addEventListener('dragleave', (e) => {
+    // Only clear when the cursor leaves the card itself, not when crossing
+    // between child elements (relatedTarget stays inside the row in that case).
+    if (!row.contains(e.relatedTarget)) {
+      row.classList.remove('window-row--drop-target');
+    }
+  });
+  row.addEventListener('drop', async (e) => {
+    if (!tabDrag || tabDrag.windowId === win.id) return;
+    e.preventDefault();
+    row.classList.remove('window-row--drop-target');
+    const { tabId } = tabDrag;
+    tabDrag = null;
+    try {
+      await chrome.tabs.move(tabId, { windowId: win.id, index: -1 });
+    } catch (err) {
+      console.error('Tab move failed:', err);
+    }
+    // chrome.tabs.onAttached/onDetached already trigger scheduleRefresh.
+  });
 }
 
 function buildWindowRow(win, index, query) {
@@ -468,6 +518,9 @@ function buildWindowRow(win, index, query) {
 
   const row = document.createElement('div');
   row.className = 'window-row';
+  row.dataset.windowId = String(win.id);
+  if (win.id === currentWindowId) row.classList.add('window-row--active');
+  attachWindowDropHandlers(row, win);
 
   const label = document.createElement('div');
   label.className = 'window-row-label';
@@ -958,6 +1011,7 @@ const DEFAULT_THEME = {
 
 let theme = { ...DEFAULT_THEME };
 let systemDarkMq = null;
+let colorPickerOpen = false;
 
 async function loadTheme() {
   const result = await chrome.storage.local.get('theme');
@@ -991,7 +1045,7 @@ function renderThemeSwitcher() {
   });
 
   const colorsRow = document.getElementById('theme-colors');
-  if (theme.mode === 'system') {
+  if (!colorPickerOpen || theme.mode === 'system') {
     colorsRow.hidden = true;
     return;
   }
@@ -1028,8 +1082,20 @@ function initThemeSwitcher() {
 
   document.querySelectorAll('.theme-mode-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      theme.mode = btn.dataset.mode;
-      await saveTheme();
+      const nextMode = btn.dataset.mode;
+      if (nextMode === 'system') {
+        colorPickerOpen = false;
+      } else if (theme.mode === nextMode) {
+        // Re-clicking the active Day/Night button toggles the picker.
+        colorPickerOpen = !colorPickerOpen;
+      } else {
+        // Switching to a different Day/Night mode opens the picker.
+        colorPickerOpen = true;
+      }
+      if (theme.mode !== nextMode) {
+        theme.mode = nextMode;
+        await saveTheme();
+      }
       applyTheme();
     });
   });
@@ -1045,6 +1111,16 @@ chrome.tabs.onAttached.addListener(scheduleRefresh);
 chrome.tabs.onDetached.addListener(scheduleRefresh);
 chrome.windows.onCreated.addListener(scheduleRefresh);
 chrome.windows.onRemoved.addListener(scheduleRefresh);
+
+// Track the focused window so the matching window-row stays highlighted.
+// WINDOW_ID_NONE (-1) fires when focus leaves Chrome entirely — keep the last
+// known id so the highlight doesn't disappear when alt-tabbing away.
+chrome.windows.onFocusChanged.addListener((winId) => {
+  if (winId === chrome.windows.WINDOW_ID_NONE) return;
+  if (winId === currentWindowId) return;
+  currentWindowId = winId;
+  scheduleRefresh();
+});
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
@@ -1114,6 +1190,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!document.getElementById('bm-edit-panel').contains(e.target)) {
       closeBmEditPanel();
     }
+    if (colorPickerOpen && !document.getElementById('theme-switcher').contains(e.target)) {
+      colorPickerOpen = false;
+      renderThemeSwitcher();
+    }
   });
 
   const searchEl = document.getElementById('search');
@@ -1144,6 +1224,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadTheme();
   initThemeSwitcher();
   applyTheme();
+
+  // Resolve the current window id before the first render so the active-window
+  // highlight is correct on the very first paint.
+  try {
+    const win = await chrome.windows.getCurrent();
+    currentWindowId = win.id;
+  } catch (err) {
+    console.error('getCurrent window failed:', err);
+  }
 
   // Load persisted shortcuts before first paint, then render all sections.
   await loadShortcuts();

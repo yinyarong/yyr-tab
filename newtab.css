@@ -535,6 +535,25 @@ body {
   align-items: stretch;
   overflow: hidden;
   position: relative;
+  transition: box-shadow 0.15s, background 0.15s;
+}
+
+/* Active window: accent ring via box-shadow (no border-width change → no jitter). */
+.window-row--active {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 0 5px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* Drop target during a cross-window tab drag — distinct from the active ring. */
+.window-row--drop-target {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface));
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* The chip currently being dragged across windows. */
+.tab-chip.dragging {
+  opacity: 0.5;
 }
 
 .window-close-btn {
