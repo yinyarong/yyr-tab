@@ -4,6 +4,10 @@ A custom Chrome new tab extension that replaces the default new tab page with a 
 
 Built with vanilla HTML, CSS, and JavaScript. No frameworks, no build tools.
 
+<img width="1470" height="833" alt="Screenshot 2026-04-19 at 05 49 59" src="https://github.com/user-attachments/assets/2c834178-61ff-479a-b21d-ae4c8f390a97" />
+<img width="1470" height="833" alt="Screenshot 2026-04-19 at 05 51 52" src="https://github.com/user-attachments/assets/2d3d5764-dd90-4d31-858f-707b73ce0bb6" />
+
+
 ---
 
 ## Features
