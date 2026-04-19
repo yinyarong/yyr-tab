@@ -211,10 +211,32 @@ body {
   flex-direction: column;
   max-height: 320px;
   min-width: 180px;
-  overflow-y: auto;
+  overflow-y: scroll;
   position: fixed;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   z-index: 9999;
+}
+
+/* Custom scrollbar for the dropdown (WebKit/Blink). Firefox uses
+   scrollbar-width above. overflow-y: scroll keeps the bar visible even
+   when content fits, so users can tell at a glance whether more items
+   exist below the fold. */
+#bookmark-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+#bookmark-dropdown::-webkit-scrollbar-track {
+  background: var(--border-soft);
+  border-radius: 4px;
+}
+#bookmark-dropdown::-webkit-scrollbar-thumb {
+  background-color: var(--text-dim);
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+#bookmark-dropdown::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
 }
 
 .bm-drop-back {
@@ -303,7 +325,9 @@ body {
   #shortcuts { grid-template-columns: repeat(3, 80px); }
 }
 
-/* Outer wrapper — resets button chrome, holds circle + label vertically */
+/* Outer wrapper — resets button chrome, holds circle + label vertically.
+   touch-action: none keeps pointermove events flowing during a touch-drag
+   instead of the browser hijacking them for native scrolling. */
 .shortcut-slot {
   appearance: none;
   background: none;
@@ -315,6 +339,7 @@ body {
   gap: 8px;
   padding: 8px 4px;
   width: 100%;
+  touch-action: none;
 }
 
 /* The circle itself */
@@ -334,11 +359,16 @@ body {
   background: var(--circle-bg-hover);
 }
 
-/* Drag & drop feedback */
-.shortcut-slot.dragging { opacity: 0.4; }
-.shortcut-slot.dragging .shortcut-circle { transform: scale(0.92); }
-.shortcut-slot.drag-over .shortcut-circle {
-  box-shadow: 0 0 0 2px var(--accent);
+/* Drag cursor + lifted state. The dragged slot is translated (and slightly
+   scaled) via inline JS; this rule just adds the lift/shadow and raises it
+   above its siblings while they FLIP-animate into their new positions. */
+.shortcut-filled         { cursor: grab; }
+.shortcut-filled:active  { cursor: grabbing; }
+
+.shortcut-slot--dragging {
+  z-index: 10;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.35));
+  pointer-events: none;
 }
 
 /* Empty slot circle — faint + icon */
