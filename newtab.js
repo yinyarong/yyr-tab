@@ -543,7 +543,60 @@ const CATEGORY_PATTERNS = [
   { name: 'Dev',    re: /github\.com|stackoverflow\.com|gitlab\.com|codepen\.io/ },
 ];
 
-function getCategory(url) {
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url);
+    return (u.hostname + u.pathname).replace(/\/$/, '').toLowerCase();
+  } catch {
+    return url.toLowerCase();
+  }
+}
+
+function normalizeCategoryName(folderName) {
+  const t = folderName.trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+let cachedBookmarkMap = null;
+
+async function buildBookmarkMap() {
+  const map = new Map();
+
+  function traverse(nodes, parentFolderName = null) {
+    for (const node of nodes) {
+      if (node.children) {
+        const isSystemFolder = !node.parentId || node.parentId === '0';
+        const folderName = isSystemFolder ? parentFolderName : normalizeCategoryName(node.title);
+        traverse(node.children, folderName);
+      } else if (node.url && parentFolderName) {
+        map.set(normalizeUrl(node.url), parentFolderName);
+      }
+    }
+  }
+
+  const tree = await chrome.bookmarks.getTree();
+  traverse(tree);
+  return map;
+}
+
+async function getBookmarkMap() {
+  if (!cachedBookmarkMap) cachedBookmarkMap = await buildBookmarkMap();
+  return cachedBookmarkMap;
+}
+
+async function getCategory(url) {
+  try {
+    const bookmarkMap = await getBookmarkMap();
+    const normalizedTabUrl = normalizeUrl(url);
+
+    if (bookmarkMap.has(normalizedTabUrl)) return bookmarkMap.get(normalizedTabUrl);
+
+    const tabHostname = new URL(url).hostname.toLowerCase();
+    for (const [bookmarkUrl, folder] of bookmarkMap.entries()) {
+      if (bookmarkUrl.startsWith(tabHostname)) return folder;
+    }
+  } catch {}
+
   try {
     const hostname = new URL(url).hostname.replace(/^www\./, '');
     if (hostname.startsWith('docs.')) return 'Dev';
@@ -636,7 +689,7 @@ function attachWindowDropHandlers(row, win) {
   });
 }
 
-function buildWindowRow(win, index, query) {
+async function buildWindowRow(win, index, query) {
   const visibleTabs = query
     ? win.tabs.filter(t =>
         (t.title ?? '').toLowerCase().includes(query) ||
@@ -646,13 +699,23 @@ function buildWindowRow(win, index, query) {
 
   if (visibleTabs.length === 0) return null;
 
-  // Group tabs by category, preserving CATEGORY_ORDER.
+  // Group tabs by category; bookmark-folder categories take priority over patterns.
   const groups = {};
   for (const tab of visibleTabs) {
-    const cat = getCategory(tab.url || '');
+    const cat = await getCategory(tab.url || '');
     (groups[cat] ??= []).push(tab);
   }
-  const activeCategories = CATEGORY_ORDER.filter(c => groups[c]?.length > 0);
+  // Order: bookmark-derived categories (alphabetical) → standard categories
+  // (in CATEGORY_ORDER order, excluding Other) → Other last.
+  const bookmarkCategories = Object.keys(groups)
+    .filter(c => !CATEGORY_ORDER.includes(c))
+    .sort();
+  const standardCategories = CATEGORY_ORDER.filter(c => groups[c]?.length > 0 && c !== 'Other');
+  const activeCategories = [
+    ...bookmarkCategories,
+    ...standardCategories,
+    ...(groups['Other']?.length > 0 ? ['Other'] : []),
+  ];
   const showLabels = activeCategories.length > 1;
 
   const row = document.createElement('div');
@@ -718,10 +781,10 @@ async function render() {
 
   const grid = document.getElementById('grid');
   grid.innerHTML = '';
-  windows.forEach((win, i) => {
-    const row = buildWindowRow(win, i, query);
+  for (const [i, win] of windows.entries()) {
+    const row = await buildWindowRow(win, i, query);
     if (row) grid.appendChild(row);
-  });
+  }
 }
 
 // ── Bookmarks bar ────────────────────────────────────────────────────────────
@@ -1280,8 +1343,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 function refreshBookmarksFromChange() {
+  cachedBookmarkMap = null;
   hideBookmarkDropdown();
   loadBookmarksBar();
+  scheduleRefresh();
 }
 chrome.bookmarks.onCreated.addListener(refreshBookmarksFromChange);
 chrome.bookmarks.onChanged.addListener(refreshBookmarksFromChange);
@@ -1371,6 +1436,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       colorPickerOpen = false;
       renderThemeSwitcher();
     }
+  });
+
+  document.querySelectorAll('.util-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      chrome.tabs.create({ url: btn.dataset.url });
+    });
   });
 
   const searchEl = document.getElementById('search');

@@ -757,6 +757,66 @@ body {
   z-index: 10000;
 }
 
+/* ── Chrome utilities bar ───────────────────────────────── */
+
+#chrome-utils {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 32px;
+  padding-bottom: 8px;
+}
+
+.util-btn {
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font-family: inherit;
+  font-size: 10.5px;
+  gap: 5px;
+  padding: 10px 8px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  width: 62px;
+}
+
+.util-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.util-btn svg,
+.util-btn span {
+  transition: filter 0.15s;
+}
+
+.util-btn:hover svg,
+.util-btn:hover span {
+  filter: brightness(1.2);
+}
+
+.util-btn[data-url="chrome://settings"] svg,
+.util-btn[data-url="chrome://settings"] span { color: #5B8DEF; }
+
+.util-btn[data-url="chrome://flags"] svg,
+.util-btn[data-url="chrome://flags"] span { color: #F5A623; }
+
+.util-btn[data-url="chrome://extensions"] svg,
+.util-btn[data-url="chrome://extensions"] span { color: #9B59B6; }
+
+.util-btn[data-url="chrome://bookmarks"] svg,
+.util-btn[data-url="chrome://bookmarks"] span { color: #E8524A; }
+
+.util-btn[data-url="chrome://history"] svg,
+.util-btn[data-url="chrome://history"] span { color: #2ECC9A; }
+
+.util-btn[data-url="chrome://downloads"] svg,
+.util-btn[data-url="chrome://downloads"] span { color: #27AE60; }
+
 /* ── Theme switcher ─────────────────────────────────────── */
 
 #theme-switcher {
