@@ -646,7 +646,7 @@ body {
 
 .group-label {
   color: var(--text-faintest);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   padding: 0 2px;
@@ -681,13 +681,13 @@ body {
 .favicon {
   border-radius: 2px;
   flex-shrink: 0;
-  height: 14px;
-  width: 14px;
+  height: 15px;
+  width: 15px;
 }
 
 .tab-title {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
