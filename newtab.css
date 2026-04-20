@@ -91,7 +91,7 @@ body {
   cursor: pointer;
   display: flex;
   flex-shrink: 0;
-  font-size: 13px;
+  font-size: 14px;
   gap: 5px;
   padding: 4px 8px;
   transition: background 0.1s;
@@ -118,7 +118,7 @@ body {
 .bm-arrow {
   color: var(--text-faintest);
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
   margin-left: 1px;
 }
 
@@ -247,7 +247,7 @@ body {
   color: var(--text-dim);
   cursor: pointer;
   display: flex;
-  font-size: 12px;
+  font-size: 13px;
   padding: 7px 14px;
   text-align: left;
   transition: background 0.1s;
@@ -263,7 +263,7 @@ body {
   color: var(--text-muted);
   cursor: pointer;
   display: flex;
-  font-size: 13px;
+  font-size: 14px;
   gap: 8px;
   min-width: 0;
   padding: 7px 14px;
@@ -284,14 +284,14 @@ body {
 .bm-folder-icon {
   color: var(--text-faintest);
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 11px;
   width: 16px;
   text-align: center;
 }
 
 .bm-empty {
   color: var(--text-faintest);
-  font-size: 12px;
+  font-size: 13px;
   padding: 8px 14px;
 }
 
