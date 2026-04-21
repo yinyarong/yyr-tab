@@ -214,29 +214,26 @@ body {
   overflow-y: scroll;
   position: fixed;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
   z-index: 9999;
 }
 
-/* Custom scrollbar for the dropdown (WebKit/Blink). Firefox uses
-   scrollbar-width above. overflow-y: scroll keeps the bar visible even
-   when content fits, so users can tell at a glance whether more items
-   exist below the fold. */
+/* overflow-y: scroll keeps the track reserved even when content fits.
+   scrollbar-width is intentionally omitted: on macOS Chrome 121+, setting
+   it overrides these WebKit rules with a native overlay scrollbar that hides
+   itself when not scrolling, breaking the always-visible behavior. */
 #bookmark-dropdown::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 #bookmark-dropdown::-webkit-scrollbar-track {
   background: var(--border-soft);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 #bookmark-dropdown::-webkit-scrollbar-thumb {
-  background-color: var(--text-dim);
-  background-clip: padding-box;
-  border: 1px solid transparent;
-  border-radius: 4px;
+  background-color: var(--text-faintest);
+  border-radius: 3px;
 }
 #bookmark-dropdown::-webkit-scrollbar-thumb:hover {
-  background-color: var(--text-muted);
+  background-color: var(--text-dim);
 }
 
 .bm-drop-back {
@@ -659,6 +656,62 @@ body {
   margin: 0 4px;
   width: 1px;
 }
+
+.group-header {
+  align-items: center;
+  display: flex;
+  gap: 2px;
+}
+
+.group-close-btn {
+  appearance: none;
+  background: none;
+  border: none;
+  color: var(--text-faintest);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 1;
+  padding: 0 2px;
+  transition: color 150ms ease;
+}
+
+.group-close-btn:hover {
+  color: #e05555;
+}
+
+.group-confirm {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+}
+
+.group-confirm-msg {
+  color: var(--text-faintest);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.group-confirm-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 1px 6px;
+  transition: background 0.1s, color 0.1s;
+}
+
+.group-confirm-yes {
+  border-color: #e05555;
+  color: #e05555;
+}
+
+.group-confirm-yes:hover { background: rgba(224, 85, 85, 0.15); }
+.group-confirm-no:hover  { background: var(--overlay); }
 
 /* ── Tab chips ──────────────────────────────────────────── */
 

@@ -689,6 +689,51 @@ function attachWindowDropHandlers(row, win) {
   });
 }
 
+function showGroupCloseConfirm(header, catLabel, closeBtn, tabIds) {
+  catLabel.hidden = true;
+  closeBtn.hidden = true;
+
+  const confirm = document.createElement('div');
+  confirm.className = 'group-confirm';
+
+  const msg = document.createElement('span');
+  msg.className = 'group-confirm-msg';
+  msg.textContent = `Close all ${tabIds.length} tabs?`;
+
+  const yes = document.createElement('button');
+  yes.className = 'group-confirm-btn group-confirm-yes';
+  yes.textContent = 'Confirm';
+
+  const no = document.createElement('button');
+  no.className = 'group-confirm-btn group-confirm-no';
+  no.textContent = 'Cancel';
+
+  confirm.appendChild(msg);
+  confirm.appendChild(yes);
+  confirm.appendChild(no);
+  header.appendChild(confirm);
+
+  const cancel = () => {
+    confirm.remove();
+    catLabel.hidden = false;
+    closeBtn.hidden = false;
+  };
+
+  const timer = setTimeout(cancel, 4000);
+
+  yes.addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearTimeout(timer);
+    chrome.tabs.remove(tabIds);
+  });
+
+  no.addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearTimeout(timer);
+    cancel();
+  });
+}
+
 async function buildWindowRow(win, index, query) {
   const visibleTabs = query
     ? win.tabs.filter(t =>
@@ -753,10 +798,31 @@ async function buildWindowRow(win, index, query) {
     group.className = 'tab-group';
 
     if (showLabels) {
+      const header = document.createElement('div');
+      header.className = 'group-header';
+
+      const groupCloseBtn = document.createElement('button');
+      groupCloseBtn.className = 'group-close-btn';
+      groupCloseBtn.textContent = '×';
+      groupCloseBtn.title = `Close all ${cat} tabs`;
+
       const catLabel = document.createElement('span');
       catLabel.className = 'group-label';
       catLabel.textContent = cat;
-      group.appendChild(catLabel);
+
+      header.appendChild(groupCloseBtn);
+      header.appendChild(catLabel);
+      group.appendChild(header);
+
+      groupCloseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tabIds = groups[cat].map(t => t.id);
+        if (tabIds.length >= 3) {
+          showGroupCloseConfirm(header, catLabel, groupCloseBtn, tabIds);
+        } else {
+          chrome.tabs.remove(tabIds);
+        }
+      });
     }
 
     groups[cat].forEach(tab => group.appendChild(buildTabChip(tab)));
