@@ -607,13 +607,22 @@ async function getCategory(url) {
   return 'Other';
 }
 
+// Use Chrome's built-in _favicon endpoint, which reliably serves the cached
+// favicon for any URL the browser has visited — including chrome:// pages and
+// extension pages that would otherwise return inaccessible chrome-extension://
+// cache URLs. Requires the "favicon" manifest permission.
+function resolveTabFavicon(tab) {
+  if (!tab.url) return FALLBACK_FAVICON;
+  return `chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(tab.url)}&size=16`;
+}
+
 function buildTabChip(tab) {
   const chip = document.createElement('div');
   chip.className = 'tab-chip';
 
   const favicon = document.createElement('img');
   favicon.className = 'favicon';
-  favicon.src = tab.favIconUrl || FALLBACK_FAVICON;
+  favicon.src = resolveTabFavicon(tab);
   favicon.addEventListener('error', () => { favicon.src = FALLBACK_FAVICON; });
 
   const title = document.createElement('span');
@@ -690,7 +699,7 @@ function attachWindowDropHandlers(row, win) {
 }
 
 function showGroupCloseConfirm(header, catLabel, closeBtn, tabIds) {
-  catLabel.hidden = true;
+  if (catLabel) catLabel.hidden = true;
   closeBtn.hidden = true;
 
   const confirm = document.createElement('div');
@@ -715,7 +724,7 @@ function showGroupCloseConfirm(header, catLabel, closeBtn, tabIds) {
 
   const cancel = () => {
     confirm.remove();
-    catLabel.hidden = false;
+    if (catLabel) catLabel.hidden = false;
     closeBtn.hidden = false;
   };
 
@@ -797,33 +806,34 @@ async function buildWindowRow(win, index, query) {
     const group = document.createElement('div');
     group.className = 'tab-group';
 
+    const header = document.createElement('div');
+    header.className = 'group-header';
+
+    const groupCloseBtn = document.createElement('button');
+    groupCloseBtn.className = 'group-close-btn';
+    groupCloseBtn.textContent = '×';
+    groupCloseBtn.title = `Close all ${cat} tabs`;
+    header.appendChild(groupCloseBtn);
+
+    let catLabel = null;
     if (showLabels) {
-      const header = document.createElement('div');
-      header.className = 'group-header';
-
-      const groupCloseBtn = document.createElement('button');
-      groupCloseBtn.className = 'group-close-btn';
-      groupCloseBtn.textContent = '×';
-      groupCloseBtn.title = `Close all ${cat} tabs`;
-
-      const catLabel = document.createElement('span');
+      catLabel = document.createElement('span');
       catLabel.className = 'group-label';
       catLabel.textContent = cat;
-
-      header.appendChild(groupCloseBtn);
       header.appendChild(catLabel);
-      group.appendChild(header);
-
-      groupCloseBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const tabIds = groups[cat].map(t => t.id);
-        if (tabIds.length >= 3) {
-          showGroupCloseConfirm(header, catLabel, groupCloseBtn, tabIds);
-        } else {
-          chrome.tabs.remove(tabIds);
-        }
-      });
     }
+
+    group.appendChild(header);
+
+    groupCloseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const tabIds = groups[cat].map(t => t.id);
+      if (tabIds.length >= 3) {
+        showGroupCloseConfirm(header, catLabel, groupCloseBtn, tabIds);
+      } else {
+        chrome.tabs.remove(tabIds);
+      }
+    });
 
     groups[cat].forEach(tab => group.appendChild(buildTabChip(tab)));
     content.appendChild(group);

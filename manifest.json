@@ -3,7 +3,7 @@
   "name": "YYR Tab",
   "version": "1.0",
   "description": "Custom new tab page — tab dashboard",
-  "permissions": ["tabs", "storage", "bookmarks", "windows"],
+  "permissions": ["tabs", "storage", "bookmarks", "windows", "favicon"],
   "background": {
     "service_worker": "background.js"
   },
