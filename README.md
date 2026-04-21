@@ -12,6 +12,16 @@ Built with vanilla HTML, CSS, and JavaScript. No frameworks, no build tools.
 
 ## Features
 
+### Chrome Utils Bar
+- 6 color-coded quick-access buttons for Chrome built-in pages: **Settings**, **Flags**, **Extensions**, **Bookmarks**, **History**, **Downloads**
+- Styled with subtle colors and brightness-on-hover effects
+- Positioned at the bottom of the new tab page for easy access
+
+### Keyboard Shortcut
+- Press **Cmd+B** (Mac) or **Ctrl+B** (Windows/Linux/ChromeOS) to focus an existing YYR Tab or open a new one
+- If multiple YYR Tabs are open in the current window, the shortcut focuses one and closes duplicates
+- To change the shortcut key, visit `chrome://extensions/shortcuts` and find "Focus existing New Tab or open a new one"
+
 ### Shortcuts Grid
 - 12 customisable shortcut slots arranged in a 6 × 2 grid
 - Each slot displays the site's favicon and name inside a circular button, matching Chrome's default new tab style
@@ -34,7 +44,11 @@ Built with vanilla HTML, CSS, and JavaScript. No frameworks, no build tools.
 ### Tab Dashboard
 - Shows every open Chrome window as a full-width row
 - Tabs within each window are displayed as compact horizontal chips (favicon + title)
-- Chips are automatically grouped by category — **Video**, **Social**, **AI**, **Dev**, and **Other** — with category labels separating the groups
+- Chips are automatically grouped by category with category labels separating the groups:
+  - **Bookmark-folder categories** (derived from your bookmarks) appear first, sorted alphabetically
+  - Standard categories — **Video**, **Social**, **AI**, **Dev** — follow in order
+  - **Other** (unmatched tabs) appears last
+  - Categories are determined by matching open tab URLs against your bookmarks; if a tab's URL matches a bookmarked URL inside a named folder, that folder name becomes the tab's category
 - Multiple tabs in the same category stack vertically within their group
 - Click a chip to switch to that tab and bring its window to the front
 - Hover over a chip to reveal a × button that closes the tab
@@ -81,9 +95,10 @@ Go to `chrome://extensions/`, click the **reload icon** (↺) on the YYR Tab car
 ```
 yyr-tab/
 ├── manifest.json   # Extension config (Manifest V3)
+├── background.js   # Service worker for keyboard shortcut handling
 ├── newtab.html     # Page shell
 ├── newtab.css      # All styles
-└── newtab.js       # All runtime logic
+└── newtab.js       # All runtime logic (UI, tab dashboard, bookmarks)
 ```
 
 ---
@@ -93,8 +108,9 @@ yyr-tab/
 | Permission | Purpose |
 |---|---|
 | `tabs` | Read tab titles, URLs, and favicons; switch and close tabs |
+| `windows` | Get the current window ID and focus windows for the keyboard shortcut handler |
 | `storage` | Save shortcuts locally via `chrome.storage.local` |
-| `bookmarks` | Read, edit, move, and delete Chrome bookmarks for the bookmarks bar |
+| `bookmarks` | Read, edit, move, and delete Chrome bookmarks for the bookmarks bar and tab categorization |
 
 ---
 
