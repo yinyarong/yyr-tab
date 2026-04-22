@@ -534,75 +534,47 @@ function getQuery() {
 
 // ── Category classification ──────────────────────────────────────────────────
 
-const CATEGORY_ORDER = ['Video', 'Social', 'AI', 'Dev', 'Other'];
+const CATEGORY_ORDER = ['Video', 'Social', 'AI', 'Dev', 'News', 'Shopping', 'Finance', 'Education', 'Productivity', 'Gaming', 'Other'];
 
 const CATEGORY_PATTERNS = [
-  { name: 'Video',  re: /youtube\.com|bilibili\.com|vimeo\.com|twitch\.tv|netflix\.com|youku\.com/ },
-  { name: 'Social', re: /x\.com|twitter\.com|instagram\.com|weibo\.com|facebook\.com|linkedin\.com|reddit\.com|tiktok\.com/ },
-  { name: 'AI',     re: /claude\.ai|gemini\.google\.com|chatgpt\.com|notebooklm\.google\.com|openai\.com|anthropic\.com|perplexity\.ai|copilot\.microsoft\.com/ },
-  { name: 'Dev',    re: /github\.com|stackoverflow\.com|gitlab\.com|codepen\.io/ },
+  { name: 'Video',       re: /youtube\.com|bilibili\.com|vimeo\.com|twitch\.tv|netflix\.com|youku\.com|hulu\.com|disneyplus\.com|primevideo\.com|iqiyi\.com|mgtv\.com|dailymotion\.com|crunchyroll\.com/ },
+  { name: 'Social',      re: /x\.com|twitter\.com|instagram\.com|weibo\.com|facebook\.com|linkedin\.com|reddit\.com|tiktok\.com|discord\.com|telegram\.org|mastodon\.social|pinterest\.com|snapchat\.com|tumblr\.com|quora\.com|zhihu\.com/ },
+  { name: 'AI',          re: /claude\.ai|gemini\.google\.com|chatgpt\.com|notebooklm\.google\.com|openai\.com|anthropic\.com|perplexity\.ai|copilot\.microsoft\.com|huggingface\.co|replicate\.com|mistral\.ai|cohere\.com|together\.ai/ },
+  { name: 'Dev',         re: /github\.com|stackoverflow\.com|gitlab\.com|codepen\.io|bitbucket\.org|npmjs\.com|pypi\.org|crates\.io|pkg\.go\.dev|developer\.mozilla\.org|devdocs\.io|jsfiddle\.net|replit\.com|codesandbox\.io|vercel\.com|netlify\.com|railway\.app|fly\.io|heroku\.com|digitalocean\.com|aws\.amazon\.com|console\.cloud\.google\.com|portal\.azure\.com/ },
+  { name: 'News',        re: /bbc\.com|bbc\.co\.uk|cnn\.com|theguardian\.com|nytimes\.com|reuters\.com|apnews\.com|bloomberg\.com|wsj\.com|ft\.com|economist\.com|techcrunch\.com|theverge\.com|wired\.com|arstechnica\.com|hackernews\.com|news\.ycombinator\.com|36kr\.com|ifanr\.com/ },
+  { name: 'Shopping',    re: /amazon\.com|ebay\.com|etsy\.com|shopify\.com|aliexpress\.com|taobao\.com|jd\.com|tmall\.com|walmart\.com|target\.com|bestbuy\.com|newegg\.com|wayfair\.com/ },
+  { name: 'Finance',     re: /paypal\.com|stripe\.com|wise\.com|revolut\.com|robinhood\.com|coinbase\.com|binance\.com|kraken\.com|tradingview\.com|investing\.com|finance\.yahoo\.com|mint\.com|chase\.com|bankofamerica\.com|wellsfargo\.com/ },
+  { name: 'Education',   re: /coursera\.org|udemy\.com|edx\.org|khanacademy\.org|pluralsight\.com|skillshare\.com|lynda\.com|brilliant\.org|duolingo\.com|wikipedia\.org|medium\.com|substack\.com/ },
+  { name: 'Productivity', re: /notion\.so|obsidian\.md|roamresearch\.com|airtable\.com|trello\.com|asana\.com|linear\.app|jira\.atlassian\.com|confluence\.atlassian\.com|figma\.com|miro\.com|canva\.com|docs\.google\.com|sheets\.google\.com|slides\.google\.com|drive\.google\.com|calendar\.google\.com|mail\.google\.com|outlook\.live\.com|slack\.com|zoom\.us|meet\.google\.com|teams\.microsoft\.com/ },
+  { name: 'Gaming',      re: /steam\.com|steampowered\.com|epicgames\.com|gog\.com|itch\.io|twitch\.tv|xbox\.com|playstation\.com|nintendo\.com|battlenet\.com|ea\.com|ubisoft\.com/ },
 ];
 
-function normalizeUrl(url) {
-  try {
-    const u = new URL(url);
-    return (u.hostname + u.pathname).replace(/\/$/, '').toLowerCase();
-  } catch {
-    return url.toLowerCase();
-  }
-}
-
-function normalizeCategoryName(folderName) {
-  const t = folderName.trim();
-  return t.charAt(0).toUpperCase() + t.slice(1);
-}
-
-let cachedBookmarkMap = null;
-
-async function buildBookmarkMap() {
-  const map = new Map();
-
-  function traverse(nodes, parentFolderName = null) {
-    for (const node of nodes) {
-      if (node.children) {
-        const isSystemFolder = !node.parentId || node.parentId === '0';
-        const folderName = isSystemFolder ? parentFolderName : normalizeCategoryName(node.title);
-        traverse(node.children, folderName);
-      } else if (node.url && parentFolderName) {
-        map.set(normalizeUrl(node.url), parentFolderName);
-      }
-    }
-  }
-
-  const tree = await chrome.bookmarks.getTree();
-  traverse(tree);
-  return map;
-}
-
-async function getBookmarkMap() {
-  if (!cachedBookmarkMap) cachedBookmarkMap = await buildBookmarkMap();
-  return cachedBookmarkMap;
-}
 
 async function getCategory(url) {
   try {
-    const bookmarkMap = await getBookmarkMap();
-    const normalizedTabUrl = normalizeUrl(url);
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.replace(/^www\./, '');
+    const pathname = parsed.pathname.toLowerCase();
 
-    if (bookmarkMap.has(normalizedTabUrl)) return bookmarkMap.get(normalizedTabUrl);
-
-    const tabHostname = new URL(url).hostname.toLowerCase();
-    for (const [bookmarkUrl, folder] of bookmarkMap.entries()) {
-      if (bookmarkUrl.startsWith(tabHostname)) return folder;
-    }
-  } catch {}
-
-  try {
-    const hostname = new URL(url).hostname.replace(/^www\./, '');
-    if (hostname.startsWith('docs.')) return 'Dev';
     for (const { name, re } of CATEGORY_PATTERNS) {
       if (re.test(hostname)) return name;
     }
+
+    // Subdomain hints
+    if (hostname.startsWith('docs.') || hostname.startsWith('api.') || hostname.startsWith('developer.')) return 'Dev';
+    if (hostname.startsWith('news.') || hostname.startsWith('blog.')) return 'News';
+    if (hostname.startsWith('mail.') || hostname.startsWith('calendar.')) return 'Productivity';
+    if (hostname.startsWith('shop.') || hostname.startsWith('store.')) return 'Shopping';
+
+    // TLD hints
+    if (hostname.endsWith('.edu')) return 'Education';
+    if (hostname.endsWith('.gov')) return 'Other';
+
+    // Path hints (secondary, only if hostname gave no match)
+    if (/\/(docs?|api|reference|developer)\b/.test(pathname)) return 'Dev';
+    if (/\/(blog|news|articles?|posts?)\b/.test(pathname)) return 'News';
+    if (/\/(shop|store|cart|checkout|product)\b/.test(pathname)) return 'Shopping';
+    if (/\/(learn|course|tutorial|lesson)\b/.test(pathname)) return 'Education';
   } catch {}
   return 'Other';
 }
@@ -1419,7 +1391,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 function refreshBookmarksFromChange() {
-  cachedBookmarkMap = null;
   hideBookmarkDropdown();
   loadBookmarksBar();
   scheduleRefresh();
