@@ -34,9 +34,12 @@ async function saveShortcuts() {
 // Storage writes from this tab also come back through here — safe because
 // renderShortcuts is idempotent.
 function applyShortcuts(newShortcuts) {
-  shortcuts = Array.isArray(newShortcuts)
-    ? newShortcuts
-    : new Array(SHORTCUT_COUNT).fill(null);
+  const raw = Array.isArray(newShortcuts) ? newShortcuts : [];
+  const filled = raw.filter(s => s !== null);
+  shortcuts = [
+    ...filled,
+    ...new Array(SHORTCUT_COUNT - filled.length).fill(null),
+  ];
   renderShortcuts();
 }
 
@@ -516,11 +519,7 @@ function shouldSpawnFxOn(target) {
 const DEBOUNCE_MS = 100;
 let debounceTimer = null;
 
-// ID of the Chrome window hosting this new-tab page. Used to highlight the
-// matching window-row and to short-circuit same-window tab drags.
 let currentWindowId = null;
-
-// In-flight cross-window tab drag: { tabId, windowId } or null.
 let tabDrag = null;
 
 function scheduleRefresh() {
@@ -532,7 +531,22 @@ function getQuery() {
   return (document.getElementById('search')?.value ?? '').trim().toLowerCase();
 }
 
-// ── Category classification ──────────────────────────────────────────────────
+// ── Greeting ─────────────────────────────────────────────────────────────────
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function formatGreetingDate() {
+  return new Date().toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+  }).toUpperCase();
+}
+
+// ── Category classification ───────────────────────────────────────────────────
 
 const CATEGORY_ORDER = ['Video', 'Social', 'AI', 'Dev', 'News', 'Shopping', 'Finance', 'Education', 'Productivity', 'Gaming', 'Other'];
 
@@ -549,7 +563,6 @@ const CATEGORY_PATTERNS = [
   { name: 'Gaming',      re: /steam\.com|steampowered\.com|epicgames\.com|gog\.com|itch\.io|twitch\.tv|xbox\.com|playstation\.com|nintendo\.com|battlenet\.com|ea\.com|ubisoft\.com/ },
 ];
 
-
 async function getCategory(url) {
   try {
     const parsed = new URL(url);
@@ -560,17 +573,14 @@ async function getCategory(url) {
       if (re.test(hostname)) return name;
     }
 
-    // Subdomain hints
     if (hostname.startsWith('docs.') || hostname.startsWith('api.') || hostname.startsWith('developer.')) return 'Dev';
     if (hostname.startsWith('news.') || hostname.startsWith('blog.')) return 'News';
     if (hostname.startsWith('mail.') || hostname.startsWith('calendar.')) return 'Productivity';
     if (hostname.startsWith('shop.') || hostname.startsWith('store.')) return 'Shopping';
 
-    // TLD hints
     if (hostname.endsWith('.edu')) return 'Education';
     if (hostname.endsWith('.gov')) return 'Other';
 
-    // Path hints (secondary, only if hostname gave no match)
     if (/\/(docs?|api|reference|developer)\b/.test(pathname)) return 'Dev';
     if (/\/(blog|news|articles?|posts?)\b/.test(pathname)) return 'News';
     if (/\/(shop|store|cart|checkout|product)\b/.test(pathname)) return 'Shopping';
@@ -579,18 +589,16 @@ async function getCategory(url) {
   return 'Other';
 }
 
-// Use Chrome's built-in _favicon endpoint, which reliably serves the cached
-// favicon for any URL the browser has visited — including chrome:// pages and
-// extension pages that would otherwise return inaccessible chrome-extension://
-// cache URLs. Requires the "favicon" manifest permission.
 function resolveTabFavicon(tab) {
   if (!tab.url) return FALLBACK_FAVICON;
   return `chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(tab.url)}&size=16`;
 }
 
-function buildTabChip(tab) {
-  const chip = document.createElement('div');
-  chip.className = 'tab-chip';
+// ── Tab row builder ───────────────────────────────────────────────────────────
+
+function buildTabRow(tab, dupCount) {
+  const row = document.createElement('div');
+  row.className = 'tab-row';
 
   const favicon = document.createElement('img');
   favicon.className = 'favicon';
@@ -602,137 +610,160 @@ function buildTabChip(tab) {
   title.textContent = tab.title || tab.url || '(untitled)';
   title.title = tab.title || tab.url || '';
 
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'close-btn';
-  closeBtn.textContent = '×';
-  closeBtn.title = 'Close tab';
-  closeBtn.addEventListener('click', (e) => {
+  row.appendChild(favicon);
+  row.appendChild(title);
+
+  if (dupCount > 1) {
+    const dupLabel = document.createElement('span');
+    dupLabel.className = 'dup-label';
+    dupLabel.textContent = `(${dupCount}×)`;
+    row.appendChild(dupLabel);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'tab-row-actions';
+
+  const bookmarkBtn = document.createElement('button');
+  bookmarkBtn.className = 'tab-action-btn bookmark-btn';
+  bookmarkBtn.title = 'Bookmark tab';
+  bookmarkBtn.innerHTML = '<svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1h10v12L6 9 1 13V1z"/></svg>';
+  bookmarkBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    const r = chip.getBoundingClientRect();
-    spawnConfetti(r.left + r.width / 2, r.top + r.height / 2);
-    chip.classList.add('chip-closing');
-    // Remove the tab only after the swoosh completes so the animation isn't
-    // cut short by the re-render that fires on chrome.tabs.onRemoved.
-    chip.addEventListener('animationend', () => chrome.tabs.remove(tab.id), { once: true });
+    chrome.bookmarks.create({ title: tab.title || tab.url, url: tab.url });
   });
 
-  chip.addEventListener('click', () => {
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'tab-action-btn tab-close-btn';
+  closeBtn.title = 'Close tab';
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const r = row.getBoundingClientRect();
+    spawnConfetti(r.left + r.width / 2, r.top + r.height / 2);
+    row.classList.add('chip-closing');
+    row.addEventListener('animationend', () => chrome.tabs.remove(tab.id), { once: true });
+  });
+
+  actions.appendChild(bookmarkBtn);
+  actions.appendChild(closeBtn);
+  row.appendChild(actions);
+
+  row.addEventListener('click', () => {
     chrome.tabs.update(tab.id, { active: true });
     chrome.windows.update(tab.windowId, { focused: true });
   });
 
-  chip.draggable = true;
-  chip.addEventListener('dragstart', (e) => {
-    tabDrag = { tabId: tab.id, windowId: tab.windowId };
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', JSON.stringify(tabDrag));
-    chip.classList.add('dragging');
-  });
-  chip.addEventListener('dragend', () => {
-    tabDrag = null;
-    chip.classList.remove('dragging');
-    document.querySelectorAll('.window-row.window-row--drop-target')
-      .forEach(node => node.classList.remove('window-row--drop-target'));
-  });
-
-  chip.appendChild(favicon);
-  chip.appendChild(title);
-  chip.appendChild(closeBtn);
-  return chip;
+  return row;
 }
 
-function attachWindowDropHandlers(row, win) {
-  row.addEventListener('dragover', (e) => {
-    if (!tabDrag || tabDrag.windowId === win.id) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    row.classList.add('window-row--drop-target');
-  });
-  row.addEventListener('dragleave', (e) => {
-    // Only clear when the cursor leaves the card itself, not when crossing
-    // between child elements (relatedTarget stays inside the row in that case).
-    if (!row.contains(e.relatedTarget)) {
-      row.classList.remove('window-row--drop-target');
-    }
-  });
-  row.addEventListener('drop', async (e) => {
-    if (!tabDrag || tabDrag.windowId === win.id) return;
-    e.preventDefault();
-    row.classList.remove('window-row--drop-target');
-    const { tabId } = tabDrag;
-    tabDrag = null;
-    try {
-      await chrome.tabs.move(tabId, { windowId: win.id, index: -1 });
-    } catch (err) {
-      console.error('Tab move failed:', err);
-    }
-    // chrome.tabs.onAttached/onDetached already trigger scheduleRefresh.
-  });
-}
+// ── Category card builder ─────────────────────────────────────────────────────
 
-function showGroupCloseConfirm(header, catLabel, closeBtn, tabIds) {
-  if (catLabel) catLabel.hidden = true;
-  closeBtn.hidden = true;
+function buildCategoryCard(catName, tabs) {
+  const urlCounts = {};
+  for (const tab of tabs) {
+    const url = tab.url || '';
+    urlCounts[url] = (urlCounts[url] || 0) + 1;
+  }
+  const duplicateCount = Object.values(urlCounts)
+    .filter(c => c > 1)
+    .reduce((sum, c) => sum + (c - 1), 0);
 
-  const confirm = document.createElement('div');
-  confirm.className = 'group-confirm';
+  const card = document.createElement('div');
+  card.className = 'tab-card';
 
-  const msg = document.createElement('span');
-  msg.className = 'group-confirm-msg';
-  msg.textContent = `Close all ${tabIds.length} tabs?`;
+  // Header
+  const header = document.createElement('div');
+  header.className = 'card-header';
 
-  const yes = document.createElement('button');
-  yes.className = 'group-confirm-btn group-confirm-yes';
-  yes.textContent = 'Confirm';
+  const name = document.createElement('span');
+  name.className = 'card-name';
+  name.textContent = catName;
 
-  const no = document.createElement('button');
-  no.className = 'group-confirm-btn group-confirm-no';
-  no.textContent = 'Cancel';
+  const badges = document.createElement('div');
+  badges.className = 'card-badges';
 
-  confirm.appendChild(msg);
-  confirm.appendChild(yes);
-  confirm.appendChild(no);
-  header.appendChild(confirm);
+  const countBadge = document.createElement('span');
+  countBadge.className = 'tab-count-badge';
+  countBadge.textContent = `${tabs.length} tab${tabs.length !== 1 ? 's' : ''} open`;
+  badges.appendChild(countBadge);
 
-  const cancel = () => {
-    confirm.remove();
-    if (catLabel) catLabel.hidden = false;
-    closeBtn.hidden = false;
-  };
+  if (duplicateCount > 0) {
+    const dupBadge = document.createElement('span');
+    dupBadge.className = 'duplicate-badge';
+    dupBadge.textContent = `${duplicateCount} duplicate${duplicateCount !== 1 ? 's' : ''}`;
+    badges.appendChild(dupBadge);
+  }
 
-  const timer = setTimeout(cancel, 4000);
+  header.appendChild(name);
+  header.appendChild(badges);
+  card.appendChild(header);
 
-  yes.addEventListener('click', (e) => {
+  // Tab list
+  const tabList = document.createElement('div');
+  tabList.className = 'tab-list';
+  for (const tab of tabs) {
+    tabList.appendChild(buildTabRow(tab, urlCounts[tab.url || '']));
+  }
+  card.appendChild(tabList);
+
+  // Footer
+  const footer = document.createElement('div');
+  footer.className = 'card-footer';
+
+  const closeAllBtn = document.createElement('button');
+  closeAllBtn.className = 'card-close-btn';
+  closeAllBtn.textContent = `× Close all ${tabs.length} tab${tabs.length !== 1 ? 's' : ''}`;
+  closeAllBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    clearTimeout(timer);
-    chrome.tabs.remove(tabIds);
+    chrome.tabs.remove(tabs.map(t => t.id));
   });
+  footer.appendChild(closeAllBtn);
 
-  no.addEventListener('click', (e) => {
-    e.stopPropagation();
-    clearTimeout(timer);
-    cancel();
-  });
+  if (duplicateCount > 0) {
+    const closeDupBtn = document.createElement('button');
+    closeDupBtn.className = 'card-close-dup-btn';
+    closeDupBtn.textContent = `Close ${duplicateCount} duplicate${duplicateCount !== 1 ? 's' : ''}`;
+    closeDupBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const seen = new Set();
+      const toClose = [];
+      for (const tab of tabs) {
+        const url = tab.url || '';
+        if (urlCounts[url] > 1) {
+          if (seen.has(url)) {
+            toClose.push(tab.id);
+          } else {
+            seen.add(url);
+          }
+        }
+      }
+      chrome.tabs.remove(toClose);
+    });
+    footer.appendChild(closeDupBtn);
+  }
+
+  card.appendChild(footer);
+  return card;
 }
 
-async function buildWindowRow(win, index, query) {
+// ── Render ────────────────────────────────────────────────────────────────────
+
+async function buildWindowSection(win, index, query) {
   const visibleTabs = query
     ? win.tabs.filter(t =>
         (t.title ?? '').toLowerCase().includes(query) ||
-        (t.url   ?? '').toLowerCase().includes(query)
-      )
+        (t.url   ?? '').toLowerCase().includes(query))
     : win.tabs;
 
   if (visibleTabs.length === 0) return null;
 
-  // Group tabs by category; bookmark-folder categories take priority over patterns.
+  // Group this window's tabs by category.
   const groups = {};
   for (const tab of visibleTabs) {
     const cat = await getCategory(tab.url || '');
     (groups[cat] ??= []).push(tab);
   }
-  // Order: bookmark-derived categories (alphabetical) → standard categories
-  // (in CATEGORY_ORDER order, excluding Other) → Other last.
+
   const bookmarkCategories = Object.keys(groups)
     .filter(c => !CATEGORY_ORDER.includes(c))
     .sort();
@@ -742,96 +773,80 @@ async function buildWindowRow(win, index, query) {
     ...standardCategories,
     ...(groups['Other']?.length > 0 ? ['Other'] : []),
   ];
-  const showLabels = activeCategories.length > 1;
 
-  const row = document.createElement('div');
-  row.className = 'window-row';
-  row.dataset.windowId = String(win.id);
-  if (win.id === currentWindowId) row.classList.add('window-row--active');
-  attachWindowDropHandlers(row, win);
+  const section = document.createElement('div');
+  section.className = 'window-section';
+  if (win.id === currentWindowId) section.classList.add('window-section--active');
 
-  const label = document.createElement('div');
-  label.className = 'window-row-label';
+  // Window header
+  const header = document.createElement('div');
+  header.className = 'window-section-header';
+
+  const label = document.createElement('span');
+  label.className = 'window-section-label';
   label.textContent = `Window ${index + 1}`;
-  row.appendChild(label);
+  header.appendChild(label);
 
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'window-close-btn';
-  closeBtn.textContent = '×';
-  closeBtn.title = 'Close this window';
-  closeBtn.addEventListener('click', (e) => {
+  const tabCount = document.createElement('span');
+  tabCount.className = 'window-tab-count';
+  tabCount.textContent = `${visibleTabs.length} tab${visibleTabs.length !== 1 ? 's' : ''}`;
+  header.appendChild(tabCount);
+
+  const closeWinBtn = document.createElement('button');
+  closeWinBtn.className = 'window-close-btn';
+  closeWinBtn.textContent = '× Close window';
+  closeWinBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     chrome.windows.remove(win.id);
   });
-  row.appendChild(closeBtn);
+  header.appendChild(closeWinBtn);
 
-  const content = document.createElement('div');
-  content.className = 'window-row-content';
+  section.appendChild(header);
 
-  activeCategories.forEach((cat, i) => {
-    if (i > 0) {
-      const divider = document.createElement('div');
-      divider.className = 'group-divider';
-      content.appendChild(divider);
-    }
+  // Card grid for this window's categories
+  const cardGrid = document.createElement('div');
+  cardGrid.className = 'window-card-grid';
+  for (const cat of activeCategories) {
+    cardGrid.appendChild(buildCategoryCard(cat, groups[cat]));
+  }
+  section.appendChild(cardGrid);
 
-    const group = document.createElement('div');
-    group.className = 'tab-group';
-
-    const header = document.createElement('div');
-    header.className = 'group-header';
-
-    const groupCloseBtn = document.createElement('button');
-    groupCloseBtn.className = 'group-close-btn';
-    groupCloseBtn.textContent = '×';
-    groupCloseBtn.title = `Close all ${cat} tabs`;
-    header.appendChild(groupCloseBtn);
-
-    let catLabel = null;
-    if (showLabels) {
-      catLabel = document.createElement('span');
-      catLabel.className = 'group-label';
-      catLabel.textContent = cat;
-      header.appendChild(catLabel);
-    }
-
-    group.appendChild(header);
-
-    groupCloseBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const tabIds = groups[cat].map(t => t.id);
-      if (tabIds.length >= 3) {
-        showGroupCloseConfirm(header, catLabel, groupCloseBtn, tabIds);
-      } else {
-        chrome.tabs.remove(tabIds);
-      }
-    });
-
-    groups[cat].forEach(tab => group.appendChild(buildTabChip(tab)));
-    content.appendChild(group);
-  });
-
-  row.appendChild(content);
-  return row;
+  return section;
 }
 
 async function render() {
-  // chrome.windows.getAll with populate:true returns every window and its tabs
-  // in one call — the "tabs" permission is required to access title/url/favIconUrl.
   const windows = await chrome.windows.getAll({ populate: true });
-
-  const totalTabs = windows.reduce((sum, w) => sum + w.tabs.length, 0);
   const query = getQuery();
 
+  const allTabs = windows.flatMap(w => w.tabs);
+  const visibleTabs = query
+    ? allTabs.filter(t =>
+        (t.title ?? '').toLowerCase().includes(query) ||
+        (t.url   ?? '').toLowerCase().includes(query))
+    : allTabs;
+
+  // Summary stats
+  const domains = new Set(
+    visibleTabs.map(t => { try { return new URL(t.url).hostname.replace(/^www\./, ''); } catch { return null; } })
+      .filter(Boolean)
+  );
   document.getElementById('summary').textContent =
-    `${totalTabs} tab${totalTabs !== 1 ? 's' : ''} across ` +
-    `${windows.length} window${windows.length !== 1 ? 's' : ''}`;
+    `${domains.size} domain${domains.size !== 1 ? 's' : ''}`;
+
+  const closeAllBtn = document.getElementById('close-all-btn');
+  if (visibleTabs.length > 0) {
+    closeAllBtn.hidden = false;
+    closeAllBtn.textContent = `× Close all ${visibleTabs.length} tab${visibleTabs.length !== 1 ? 's' : ''}`;
+    closeAllBtn.onclick = () => chrome.tabs.remove(visibleTabs.map(t => t.id));
+  } else {
+    closeAllBtn.hidden = true;
+  }
 
   const grid = document.getElementById('grid');
   grid.innerHTML = '';
   for (const [i, win] of windows.entries()) {
-    const row = await buildWindowRow(win, i, query);
-    if (row) grid.appendChild(row);
+    const section = await buildWindowSection(win, i, query);
+    if (section) grid.appendChild(section);
   }
 }
 
@@ -1363,9 +1378,8 @@ chrome.tabs.onDetached.addListener(scheduleRefresh);
 chrome.windows.onCreated.addListener(scheduleRefresh);
 chrome.windows.onRemoved.addListener(scheduleRefresh);
 
-// Track the focused window so the matching window-row stays highlighted.
-// WINDOW_ID_NONE (-1) fires when focus leaves Chrome entirely — keep the last
-// known id so the highlight doesn't disappear when alt-tabbing away.
+// Track the focused window to deduplicate onFocusChanged events.
+// WINDOW_ID_NONE (-1) fires when focus leaves Chrome entirely — ignore it.
 chrome.windows.onFocusChanged.addListener((winId) => {
   if (winId === chrome.windows.WINDOW_ID_NONE) return;
   if (winId === currentWindowId) return;
@@ -1428,7 +1442,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     openEditForm(i);
   });
   document.getElementById('ctx-remove').addEventListener('click', async () => {
-    shortcuts[ctxSlotIndex] = null;
+    shortcuts.splice(ctxSlotIndex, 1);
+    shortcuts.push(null);
     hideContextMenu();
     await saveShortcuts();
   });
