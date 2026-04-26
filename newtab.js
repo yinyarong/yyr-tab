@@ -21,9 +21,9 @@ let renderedEditingSlot = null;                        // last slot the form was
 
 async function loadShortcuts() {
   const result = await chrome.storage.local.get('shortcuts');
-  if (Array.isArray(result.shortcuts)) {
-    shortcuts = result.shortcuts;
-  }
+  const raw = Array.isArray(result.shortcuts) ? result.shortcuts : [];
+  const filled = raw.filter(s => s !== null);
+  shortcuts = [...filled, ...new Array(SHORTCUT_COUNT - filled.length).fill(null)];
 }
 
 async function saveShortcuts() {
@@ -129,6 +129,11 @@ const DRAG_THRESHOLD_PX = 5;
 //     naturalLeft, naturalTop, hasMoved, lastHoverEl }
 let dragState = null;
 
+// True while a FLIP animation is playing. Prevents the animated mid-flight
+// positions of siblings from triggering spurious reorders during the 200 ms
+// transition.
+let flipAnimating = false;
+
 // Briefly true in the frame after a real drag ends, so the synthetic click
 // that follows pointerup doesn't trigger the slot's open/edit action.
 let suppressNextClick = false;
@@ -189,7 +194,13 @@ function onShortcutPointerMove(e) {
     }
   }
 
-  if (hoverTarget && hoverTarget !== dragState.lastHoverEl) {
+  // Reset the guard when the cursor isn't over any slot, so re-entering a
+  // slot after leaving it can trigger a fresh swap.
+  if (!hoverTarget) {
+    dragState.lastHoverEl = null;
+  } else if (!flipAnimating &&
+             hoverTarget !== dragState.lastHoverEl &&
+             hoverTarget.classList.contains('shortcut-filled')) {
     reorderWithFlip(dragState.el, hoverTarget);
     dragState.lastHoverEl = hoverTarget;
   }
@@ -227,6 +238,8 @@ function reorderWithFlip(draggedEl, targetEl) {
   else                     targetEl.before(draggedEl);
 
   // INVERT + PLAY: drive each sibling from its old rect to its new rect.
+  flipAnimating = true;
+  const anims = [];
   for (const el of items) {
     if (el === draggedEl) continue;
     const first = firstRects.get(el);
@@ -234,14 +247,17 @@ function reorderWithFlip(draggedEl, targetEl) {
     const shiftX = first.left - last.left;
     const shiftY = first.top  - last.top;
     if (shiftX === 0 && shiftY === 0) continue;
-    el.animate(
+    anims.push(el.animate(
       [
         { transform: `translate(${shiftX}px, ${shiftY}px)` },
         { transform: 'translate(0, 0)' }
       ],
       { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
-    );
+    ));
   }
+  Promise.all(anims.map(a => a.finished)).catch(() => {}).then(() => {
+    flipAnimating = false;
+  });
 
   // The dragged el just moved in the DOM; refresh its natural origin so the
   // follow-the-pointer translate keeps the grab point under the cursor.
@@ -258,6 +274,7 @@ async function onShortcutPointerUp(e) {
   try { el.releasePointerCapture(e.pointerId); } catch {}
   el.classList.remove('shortcut-slot--dragging');
   el.style.transform = '';
+  flipAnimating = false;
 
   if (!hasMoved) return;
 
@@ -271,10 +288,12 @@ async function onShortcutPointerUp(e) {
   const grid = document.getElementById('shortcuts');
   const snapshot = shortcuts.slice();
   const children = [...grid.children];
-  shortcuts = children.map(node => {
+  const reordered = children.map(node => {
     const idx = parseInt(node.dataset.idx, 10);
     return Number.isInteger(idx) ? snapshot[idx] : null;
   });
+  const filled = reordered.filter(s => s !== null);
+  shortcuts = [...filled, ...new Array(SHORTCUT_COUNT - filled.length).fill(null)];
   // Re-stamp the indices so a second drag in this same session reads from
   // the updated array instead of the pre-drag one.
   children.forEach((node, i) => { node.dataset.idx = String(i); });
