@@ -601,6 +601,13 @@ body {
     0 0 0 5px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
+.window-section--drop-target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-surface));
+  transition: box-shadow 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
 .window-section-header {
   align-items: center;
   background: var(--bg-surface-2);
@@ -724,11 +731,14 @@ body {
 .tab-row {
   align-items: center;
   border-radius: 6px;
-  cursor: pointer;
+  cursor: grab;
   display: flex;
   gap: 7px;
   padding: 5px 8px;
+  touch-action: none;
   transition: background 0.1s;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tab-row:hover {
@@ -861,6 +871,17 @@ body {
   pointer-events: none;
   position: fixed;
   z-index: 9999;
+}
+
+/* ── Tab chip drag: drop landing animation ──────────────── */
+
+@keyframes tab-land {
+  0%   { transform: scale(1.08); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  100% { transform: scale(1);    box-shadow: none; }
+}
+
+.tab-row--just-landed {
+  animation: tab-land 300ms cubic-bezier(0.2, 0, 0, 1) forwards;
 }
 
 /* ── Global click firework overlay ──────────────────────── */

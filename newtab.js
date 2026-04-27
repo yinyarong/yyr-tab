@@ -539,7 +539,12 @@ const DEBOUNCE_MS = 100;
 let debounceTimer = null;
 
 let currentWindowId = null;
-let tabDrag = null;
+let tabDrag = null;       // { tabId, sourceWindowId, sourceEl, ghostEl } while a tab chip drag is active
+let tabDropTarget = null; // the .window-section element currently highlighted as a drop zone
+let pendingLandTabId = null; // tab that just moved cross-window; gets .tab-row--just-landed on next render
+let suppressNextTabClick = false; // blocks the synthetic click that fires right after a tab chip drag ends
+
+const TAB_DRAG_THRESHOLD_PX = 6;
 
 function scheduleRefresh() {
   clearTimeout(debounceTimer);
@@ -668,11 +673,117 @@ function buildTabRow(tab, dupCount) {
   row.appendChild(actions);
 
   row.addEventListener('click', () => {
+    if (suppressNextTabClick) return;
     chrome.tabs.update(tab.id, { active: true });
     chrome.windows.update(tab.windowId, { focused: true });
   });
 
+  row.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    const onMove = (moveEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      if (!tabDrag && Math.hypot(dx, dy) > TAB_DRAG_THRESHOLD_PX) {
+        initTabDrag(row, tab.id, tab.windowId, e);
+      }
+      if (tabDrag) {
+        moveTabDragGhost(moveEvent.clientX, moveEvent.clientY);
+        highlightTabDropTarget(moveEvent.clientX, moveEvent.clientY);
+      }
+    };
+
+    const onUp = (upEvent) => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      if (tabDrag) {
+        suppressNextTabClick = true;
+        requestAnimationFrame(() => { suppressNextTabClick = false; });
+        commitTabDrop(upEvent.clientX, upEvent.clientY);
+      }
+    };
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  });
+
+  if (tab.id === pendingLandTabId) {
+    pendingLandTabId = null;
+    row.classList.add('tab-row--just-landed');
+    row.addEventListener('animationend', () => row.classList.remove('tab-row--just-landed'), { once: true });
+  }
+
   return row;
+}
+
+// ── Tab chip drag & drop (pointer events) ────────────────────────────────────
+
+function initTabDrag(sourceEl, tabId, windowId, pointerEvent) {
+  const ghost = sourceEl.cloneNode(true);
+  ghost.style.cssText = `
+    position: fixed;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.85;
+    width: ${sourceEl.offsetWidth}px;
+    transform: scale(1.05) rotate(-1.5deg);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    transition: transform 100ms ease, box-shadow 100ms ease;
+    left: ${pointerEvent.clientX - sourceEl.offsetWidth / 2}px;
+    top: ${pointerEvent.clientY - sourceEl.offsetHeight / 2}px;
+  `;
+  document.body.appendChild(ghost);
+  sourceEl.style.opacity = '0.35';
+  tabDrag = { tabId, sourceWindowId: windowId, sourceEl, ghostEl: ghost };
+}
+
+function moveTabDragGhost(x, y) {
+  const g = tabDrag.ghostEl;
+  g.style.left = `${x - g.offsetWidth / 2}px`;
+  g.style.top  = `${y - g.offsetHeight / 2}px`;
+}
+
+function highlightTabDropTarget(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const section = el?.closest('.window-section');
+
+  if (tabDropTarget && tabDropTarget !== section) {
+    tabDropTarget.classList.remove('window-section--drop-target');
+    tabDropTarget = null;
+  }
+
+  if (section && section.dataset.windowId !== String(tabDrag.sourceWindowId)) {
+    section.classList.add('window-section--drop-target');
+    tabDropTarget = section;
+  }
+}
+
+async function commitTabDrop(x, y) {
+  tabDrag.ghostEl.remove();
+  tabDrag.sourceEl.style.opacity = '';
+
+  if (tabDropTarget) {
+    tabDropTarget.classList.remove('window-section--drop-target');
+  }
+
+  const targetSection = tabDropTarget;
+  const { tabId, sourceWindowId } = tabDrag;
+  tabDrag = null;
+  tabDropTarget = null;
+
+  if (!targetSection) return;
+
+  const targetWindowId = parseInt(targetSection.dataset.windowId, 10);
+  if (targetWindowId === sourceWindowId) return;
+
+  try {
+    await chrome.tabs.move(tabId, { windowId: targetWindowId, index: -1 });
+    pendingLandTabId = tabId;
+  } catch (err) {
+    console.error('YYR Tab: failed to move tab', err);
+  }
 }
 
 // ── Category card builder ─────────────────────────────────────────────────────
@@ -795,6 +906,7 @@ async function buildWindowSection(win, index, query) {
 
   const section = document.createElement('div');
   section.className = 'window-section';
+  section.dataset.windowId = String(win.id);
   if (win.id === currentWindowId) section.classList.add('window-section--active');
 
   // Window header
