@@ -312,6 +312,8 @@ body {
   gap: 4px;
   justify-content: center;
   margin-bottom: 10px;
+  touch-action: none;
+  user-select: none;
 }
 
 @media (max-width: 640px) {
@@ -335,8 +337,9 @@ body {
   align-items: center;
   gap: 8px;
   padding: 8px 4px;
-  width: 100%;
   touch-action: none;
+  user-select: none;
+  width: 100%;
 }
 
 /* The circle itself */
@@ -393,6 +396,14 @@ body {
   border-radius: 2px;
   height: 26px;
   width: 26px;
+}
+
+.shortcut-avatar {
+  color: var(--accent);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
 }
 
 .shortcut-label {

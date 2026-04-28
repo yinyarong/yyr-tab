@@ -45,14 +45,14 @@ function applyShortcuts(newShortcuts) {
 
 // ── Shortcut helpers ────────────────────────────────────────────────────────
 
-// Build the Google favicon service URL for a given site URL.
-// sz=32 requests a 32×32px icon; we pass just the hostname, not the full URL.
+// Build Chrome's internal favicon URL for a given page URL.
+// size=64 gives sharp icons on HiDPI displays.
 function faviconFor(url) {
   try {
-    const { hostname } = new URL(url);
-    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
+    new URL(url);
+    return `chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(url)}&size=64`;
   } catch {
-    return FALLBACK_FAVICON;
+    return null;
   }
 }
 
@@ -87,11 +87,27 @@ function buildFilledSlot(index, { name, url }) {
   btn.className = 'shortcut-slot shortcut-filled';
   btn.setAttribute('aria-label', name);
 
-  const img = document.createElement('img');
-  img.className = 'shortcut-favicon';
-  img.src = faviconFor(url);
-  img.addEventListener('error', () => { img.src = FALLBACK_FAVICON; });
-  btn.appendChild(makeCircle(img));
+  const circle = makeCircle(null);
+
+  function showAvatar() {
+    const avatar = document.createElement('span');
+    avatar.className = 'shortcut-avatar';
+    avatar.textContent = (name[0] ?? '?').toUpperCase();
+    circle.appendChild(avatar);
+  }
+
+  const favUrl = faviconFor(url);
+  if (favUrl) {
+    const img = document.createElement('img');
+    img.className = 'shortcut-favicon';
+    img.addEventListener('error', showAvatar);
+    circle.appendChild(img);
+    img.src = favUrl; // set after img is mounted in circle
+  } else {
+    showAvatar();
+  }
+
+  btn.appendChild(circle);
 
   const label = document.createElement('span');
   label.className = 'shortcut-label';
@@ -122,17 +138,12 @@ function buildFilledSlot(index, { name, url }) {
 // order is committed to chrome.storage.local only on pointerup, and the
 // cross-tab sync listener skips mid-drag updates to avoid wiping the DOM.
 
-const DRAG_THRESHOLD_PX = 5;
+const DRAG_THRESHOLD_PX = 6;
 
 // While a drag is active:
 //   { el, pointerId, startX, startY, grabOffsetX, grabOffsetY,
 //     naturalLeft, naturalTop, hasMoved, lastHoverEl }
 let dragState = null;
-
-// True while a FLIP animation is playing. Prevents the animated mid-flight
-// positions of siblings from triggering spurious reorders during the 200 ms
-// transition.
-let flipAnimating = false;
 
 // Briefly true in the frame after a real drag ends, so the synthetic click
 // that follows pointerup doesn't trigger the slot's open/edit action.
@@ -171,6 +182,7 @@ function onShortcutPointerDown(e) {
 
 function onShortcutPointerMove(e) {
   if (!dragState || e.pointerId !== dragState.pointerId) return;
+  e.preventDefault();
 
   if (!dragState.hasMoved) {
     const dx = e.clientX - dragState.startX;
@@ -178,6 +190,7 @@ function onShortcutPointerMove(e) {
     if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
     dragState.hasMoved = true;
     dragState.el.classList.add('shortcut-slot--dragging');
+    dragState.el.style.transition = 'none'; // no easing lag while following cursor
   }
 
   // Manual sibling hit-test (the dragged el is excluded so it doesn't mask
@@ -198,8 +211,7 @@ function onShortcutPointerMove(e) {
   // slot after leaving it can trigger a fresh swap.
   if (!hoverTarget) {
     dragState.lastHoverEl = null;
-  } else if (!flipAnimating &&
-             hoverTarget !== dragState.lastHoverEl &&
+  } else if (hoverTarget !== dragState.lastHoverEl &&
              hoverTarget.classList.contains('shortcut-filled')) {
     reorderWithFlip(dragState.el, hoverTarget);
     dragState.lastHoverEl = hoverTarget;
@@ -238,8 +250,10 @@ function reorderWithFlip(draggedEl, targetEl) {
   else                     targetEl.before(draggedEl);
 
   // INVERT + PLAY: drive each sibling from its old rect to its new rect.
-  flipAnimating = true;
-  const anims = [];
+  // No flipAnimating lock — WAAPI handles interruption: recording firstRects
+  // while a previous animation is running captures the mid-flight visual
+  // positions, and cancel() resets to base layout before the new animation
+  // starts, so the delta is always correct even on rapid successive swaps.
   for (const el of items) {
     if (el === draggedEl) continue;
     const first = firstRects.get(el);
@@ -247,17 +261,14 @@ function reorderWithFlip(draggedEl, targetEl) {
     const shiftX = first.left - last.left;
     const shiftY = first.top  - last.top;
     if (shiftX === 0 && shiftY === 0) continue;
-    anims.push(el.animate(
+    el.animate(
       [
         { transform: `translate(${shiftX}px, ${shiftY}px)` },
         { transform: 'translate(0, 0)' }
       ],
-      { duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
-    ));
+      { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
+    );
   }
-  Promise.all(anims.map(a => a.finished)).catch(() => {}).then(() => {
-    flipAnimating = false;
-  });
 
   // The dragged el just moved in the DOM; refresh its natural origin so the
   // follow-the-pointer translate keeps the grab point under the cursor.
@@ -273,10 +284,27 @@ async function onShortcutPointerUp(e) {
 
   try { el.releasePointerCapture(e.pointerId); } catch {}
   el.classList.remove('shortcut-slot--dragging');
-  el.style.transform = '';
-  flipAnimating = false;
 
-  if (!hasMoved) return;
+  // Cancel any in-flight sibling FLIP animations and snap to final layout.
+  const grid = document.getElementById('shortcuts');
+  for (const child of grid.children) {
+    if (child === el) continue;
+    for (const anim of child.getAnimations()) anim.cancel();
+    child.style.transform = '';
+  }
+
+  if (!hasMoved) {
+    el.style.transform = '';
+    return;
+  }
+
+  // Landing animation: snap translate away instantly, then scale(1.05)→scale(1).
+  el.style.transition = 'none';
+  el.style.transform = 'scale(1.05)';
+  void el.offsetHeight; // commit before starting transition
+  el.style.transition = 'transform 150ms cubic-bezier(0.2, 0, 0, 1)';
+  el.style.transform = '';
+  el.addEventListener('transitionend', () => { el.style.transition = ''; }, { once: true });
 
   // A click event fires right after pointerup on the same element — swallow it
   // so a drag-and-drop doesn't also open the URL.
@@ -285,7 +313,6 @@ async function onShortcutPointerUp(e) {
 
   // Rebuild the shortcuts array from the DOM, using each slot's
   // render-time index stamp to look up its payload.
-  const grid = document.getElementById('shortcuts');
   const snapshot = shortcuts.slice();
   const children = [...grid.children];
   const reordered = children.map(node => {
