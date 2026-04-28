@@ -551,8 +551,14 @@ function scheduleRefresh() {
   debounceTimer = setTimeout(render, DEBOUNCE_MS);
 }
 
-function getQuery() {
-  return (document.getElementById('search')?.value ?? '').trim().toLowerCase();
+function openGoogleSearch(query) {
+  const q = query.trim();
+  if (!q) return;
+  const looksLikeUrl = /^https?:\/\//i.test(q) || (/\./.test(q) && !/\s/.test(q));
+  const url = looksLikeUrl
+    ? (/^https?:\/\//i.test(q) ? q : `https://${q}`)
+    : `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+  chrome.tabs.create({ url });
 }
 
 // ── Greeting ─────────────────────────────────────────────────────────────────
@@ -878,18 +884,12 @@ function buildCategoryCard(catName, tabs) {
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
-async function buildWindowSection(win, index, query) {
-  const visibleTabs = query
-    ? win.tabs.filter(t =>
-        (t.title ?? '').toLowerCase().includes(query) ||
-        (t.url   ?? '').toLowerCase().includes(query))
-    : win.tabs;
-
-  if (visibleTabs.length === 0) return null;
+async function buildWindowSection(win, index) {
+  if (win.tabs.length === 0) return null;
 
   // Group this window's tabs by category.
   const groups = {};
-  for (const tab of visibleTabs) {
+  for (const tab of win.tabs) {
     const cat = await getCategory(tab.url || '');
     (groups[cat] ??= []).push(tab);
   }
@@ -920,7 +920,7 @@ async function buildWindowSection(win, index, query) {
 
   const tabCount = document.createElement('span');
   tabCount.className = 'window-tab-count';
-  tabCount.textContent = `${visibleTabs.length} tab${visibleTabs.length !== 1 ? 's' : ''}`;
+  tabCount.textContent = `${win.tabs.length} tab${win.tabs.length !== 1 ? 's' : ''}`;
   header.appendChild(tabCount);
 
   const closeWinBtn = document.createElement('button');
@@ -947,28 +947,21 @@ async function buildWindowSection(win, index, query) {
 
 async function render() {
   const windows = await chrome.windows.getAll({ populate: true });
-  const query = getQuery();
-
   const allTabs = windows.flatMap(w => w.tabs);
-  const visibleTabs = query
-    ? allTabs.filter(t =>
-        (t.title ?? '').toLowerCase().includes(query) ||
-        (t.url   ?? '').toLowerCase().includes(query))
-    : allTabs;
 
   // Summary stats
   const domains = new Set(
-    visibleTabs.map(t => { try { return new URL(t.url).hostname.replace(/^www\./, ''); } catch { return null; } })
+    allTabs.map(t => { try { return new URL(t.url).hostname.replace(/^www\./, ''); } catch { return null; } })
       .filter(Boolean)
   );
   document.getElementById('summary').textContent =
     `${domains.size} domain${domains.size !== 1 ? 's' : ''}`;
 
   const closeAllBtn = document.getElementById('close-all-btn');
-  if (visibleTabs.length > 0) {
+  if (allTabs.length > 0) {
     closeAllBtn.hidden = false;
-    closeAllBtn.textContent = `× Close all ${visibleTabs.length} tab${visibleTabs.length !== 1 ? 's' : ''}`;
-    closeAllBtn.onclick = () => chrome.tabs.remove(visibleTabs.map(t => t.id));
+    closeAllBtn.textContent = `× Close all ${allTabs.length} tab${allTabs.length !== 1 ? 's' : ''}`;
+    closeAllBtn.onclick = () => chrome.tabs.remove(allTabs.map(t => t.id));
   } else {
     closeAllBtn.hidden = true;
   }
@@ -976,7 +969,7 @@ async function render() {
   const grid = document.getElementById('grid');
   grid.innerHTML = '';
   for (const [i, win] of windows.entries()) {
-    const section = await buildWindowSection(win, i, query);
+    const section = await buildWindowSection(win, i);
     if (section) grid.appendChild(section);
   }
 }
@@ -1642,14 +1635,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   searchEl.addEventListener('input', () => {
     clearBtn.hidden = searchEl.value.length === 0;
-    render();
+  });
+
+  searchEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') openGoogleSearch(searchEl.value);
   });
 
   clearBtn.addEventListener('click', () => {
     searchEl.value = '';
     clearBtn.hidden = true;
     searchEl.focus();
-    render();
   });
 
   // Initialise the click firework canvas, then wire the global click listener.
